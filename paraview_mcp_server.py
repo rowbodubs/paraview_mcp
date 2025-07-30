@@ -231,27 +231,65 @@ def get_active_source_names_by_type(source_type: str = None) -> str:
     else:
         return message
 
-@mcp.tool()
-def edit_volume_opacity(field_name: str, opacity_points: list) -> str:
-    """
-    Edit ONLY the opacity transfer function for the specified field,
-    ensuring we pass only (value, alpha) pairs.
+# @mcp.tool()
+# def edit_volume_opacity(field_name: str, opacity_points: list) -> str:
+#     """
+#     Edit ONLY the opacity transfer function for the specified field,
+#     ensuring we pass only (value, alpha) pairs.
 
-    [Tips: only needed by volume rendering particularly finetuning the result, likely not needed when the color is ideal, usually the lower value should always have lower opacity]
+#     [Tips: only needed by volume rendering particularly finetuning the result, likely not needed when the color is ideal, usually the lower value should always have lower opacity]
+
+#     Args:
+#         field_name (str): The data array (field) name whose opacity we're adjusting.
+#         opacity_points (list of [value, alpha] pairs):
+#             Example: [[0.0, 0.0], [50.0, 0.3], [100.0, 1.0]]
+
+#     Returns:
+#         A status message (success or error)
+#     """
+#     success, message = pv_manager.edit_volume_opacity(field_name, opacity_points)
+#     return message
+
+# Compatible with OpenAI tool using
+@mcp.tool()
+def edit_volume_opacity(field_name: str, opacity_points: list[dict[str, float]]) -> str:
+    """
+    Edit ONLY the opacity transfer function for the specified field.
 
     Args:
-        field_name (str): The data array (field) name whose opacity we're adjusting.
-        opacity_points (list of [value, alpha] pairs):
-            Example: [[0.0, 0.0], [50.0, 0.3], [100.0, 1.0]]
+        field_name (str): The scalar field to modify.
+        opacity_points (list): A list of dicts like:
+            [{"value": 0.0, "alpha": 0.0}, {"value": 50.0, "alpha": 0.3}]
 
     Returns:
         A status message (success or error)
     """
-    success, message = pv_manager.edit_volume_opacity(field_name, opacity_points)
+    formatted_points = [[pt["value"], pt["alpha"]] for pt in opacity_points]
+    success, message = pv_manager.edit_volume_opacity(field_name, formatted_points)
     return message
 
+# @mcp.tool()
+# def set_color_map(field_name: str, color_points: list) -> str:
+#     """
+#     Sets the color transfer function for the specified field.
+
+#     [Tips: only volume rendering should be using the set_color_map function, the lower values range corresponds to lower density objects, whereas higher values indicate high physical density. When design the color mapping try to assess the object of interest's density first from the default colormap (low value assigned to blue, high value assigned to red) and re-assign customized color accordingly, the order of the color may need to be adjust based on the rendering result. The more solid object should have higher density (!high value range). And a screen_shot should always be taken once this function is called to assess how to adjust the color_map again.]
+
+#     Args:
+#         field_name (str): The name of the field/array (as it appears in ParaView).
+#         color_points (list of [value, [r, g, b]]):
+#             e.g., [[0.0, [0.0, 0.0, 1.0]], [50.0, [0.0, 1.0, 0.0]], [100.0, [1.0, 0.0, 0.0]]]
+#             Each element is (value, (r, g, b)) with r,g,b in [0,1].
+
+#     Returns:
+#         A status message as a string (e.g., success or error).
+#     """
+#     success, message = pv_manager.set_color_map(field_name, color_points)
+#     return message
+
+# Compatible with OpenAI tool using
 @mcp.tool()
-def set_color_map(field_name: str, color_points: list) -> str:
+def set_color_map(field_name: str, color_points: list[dict]) -> str:
     """
     Sets the color transfer function for the specified field.
 
@@ -259,14 +297,26 @@ def set_color_map(field_name: str, color_points: list) -> str:
 
     Args:
         field_name (str): The name of the field/array (as it appears in ParaView).
-        color_points (list of [value, [r, g, b]]):
-            e.g., [[0.0, [0.0, 0.0, 1.0]], [50.0, [0.0, 1.0, 0.0]], [100.0, [1.0, 0.0, 0.0]]]
-            Each element is (value, (r, g, b)) with r,g,b in [0,1].
+        color_points (list of dicts): Each element should be a dict:
+            {"value": float, "rgb": [r, g, b]} where r,g,b ∈ [0,1].
+
+            Example:
+            [
+                {"value": 0.0, "rgb": [0.0, 0.0, 1.0]},
+                {"value": 50.0, "rgb": [0.0, 1.0, 0.0]},
+                {"value": 100.0, "rgb": [1.0, 0.0, 0.0]}
+            ]
 
     Returns:
-        A status message as a string (e.g., success or error).
+        A status message (success or error).
     """
-    success, message = pv_manager.set_color_map(field_name, color_points)
+    # Transform color_points to expected internal format: list[tuple[float, tuple[float, float, float]]]
+    try:
+        formatted_points = [(pt["value"], tuple(pt["rgb"])) for pt in color_points]
+    except Exception as e:
+        return f"Invalid format for color_points: {e}"
+
+    success, message = pv_manager.set_color_map(field_name, formatted_points)
     return message
 
 
@@ -432,15 +482,32 @@ def reset_camera() -> str:
     success, message = pv_manager.reset_camera()
     return message
 
+# @mcp.tool()
+# def plot_over_line(point1: list = None, point2: list = None, resolution: int = 100) -> str:
+#     """
+#     Create a 'Plot Over Line' filter to sample data along a line between two points.
+
+#     Args:
+#         point1 (list, optional): The [x, y, z] coordinates of the start point. If None, will use data bounds.
+#         point2 (list, optional): The [x, y, z] coordinates of the end point. If None, will use data bounds.
+#         resolution (int, optional): Number of sample points along the line (default: 100).
+
+#     Returns:
+#         Status message
+#     """
+#     success, message, plot_filter = pv_manager.plot_over_line(point1, point2, resolution)
+#     return message
+
+# Compatible with OpenAI tool using
 @mcp.tool()
-def plot_over_line(point1: list = None, point2: list = None, resolution: int = 100) -> str:
+def plot_over_line(point1: list[float] = None, point2: list[float] = None, resolution: int = 100) -> str:
     """
     Create a 'Plot Over Line' filter to sample data along a line between two points.
 
     Args:
-        point1 (list, optional): The [x, y, z] coordinates of the start point. If None, will use data bounds.
-        point2 (list, optional): The [x, y, z] coordinates of the end point. If None, will use data bounds.
-        resolution (int, optional): Number of sample points along the line (default: 100).
+        point1 (list of float): The [x, y, z] coordinates of the start point. If None, will use data bounds.
+        point2 (list of float): The [x, y, z] coordinates of the end point. If None, will use data bounds.
+        resolution (int): Number of sample points along the line (default: 100).
 
     Returns:
         Status message
@@ -477,7 +544,7 @@ def list_commands() -> str:
         "create_isosurface: Create an isosurface visualization",
         "create_slice: Create a slice through the data",
         "toggle_volume_rendering: Enable or disable volume rendering",
-	"toggle_visibility: Enable or disable visibility for the active source",
+	    "toggle_visibility: Enable or disable visibility for the active source",
         "set_active_source: Set the active pipeline object by name",
         "get_active_source_names_by_type: Get a list of sources filtered by type",
         "color_by: Color the visualization by a field",
