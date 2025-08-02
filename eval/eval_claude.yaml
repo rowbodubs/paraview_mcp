@@ -1,0 +1,35 @@
+providers:
+  - id: python:mcp_eval_client.py
+    config:
+      use_claude: true
+      model: claude-sonnet-4-20250514
+      mcp:
+        enabled: true
+        server:
+          command: python
+          args: ["./src/paraview_mcp_server.py"]
+          cwd: "./"
+          name: paraview-server
+          env:
+            PORT: "3000"
+        temperature: 0
+        max_tokens: 4096
+        executeTools: true
+
+prompts:
+  - |
+    You are a helpful assistant. Please answer the following question:
+    {{question}}
+
+# Configure default test settings for model-graded assertions
+defaultTest:
+  options:
+    runSerially: true
+    provider: anthropic:messages:claude-sonnet-4-20250514
+
+tests: file://test_cases.yaml
+
+
+evaluateOptions:
+  cache: false
+  maxConcurrency: 1    

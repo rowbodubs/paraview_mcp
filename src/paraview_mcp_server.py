@@ -155,6 +155,40 @@ def create_slice(origin_x: float = None, origin_y: float = None, origin_z: float
     return message if success else f"Error creating slice: {message}"
 
 @mcp.tool()
+def create_clip(origin_x: float = None, origin_y: float = None, origin_z: float = None,
+                normal_x: float = 1, normal_y: float = 0, normal_z: float = 0,
+                invert: bool = False) -> str:
+    """
+    Create a clip filter to cut the data with a plane.
+    
+    Args:
+        origin_x, origin_y, origin_z: Coordinates for the clip plane's origin. If None,
+            defaults to the data set's center.
+        normal_x, normal_y, normal_z: Normal vector for the clip plane (default [1, 0, 0] for y-z plane).
+        invert (bool): If False, keeps the positive side of the plane normal (default).
+                      If True, keeps the negative side of the plane normal.
+    
+    Examples:
+        - To clip with y-z plane at x=0, keeping -x half: create_clip(origin_x=0, normal_x=1, invert=True)
+        - To clip with x-y plane at z=0, keeping +z half: create_clip(origin_z=0, normal_z=1, invert=False)
+    
+    Returns:
+        A string message containing success/failure details, plus the pipeline name.
+    """
+    success, message, clip_filter, clip_name = pv_manager.create_clip(
+        origin_x,
+        origin_y,
+        origin_z,
+        normal_x,
+        normal_y,
+        normal_z,
+        invert
+    )
+    
+    # Return either an error message or a success message including the clip's name
+    return message if success else f"Error creating clip: {message}"
+
+@mcp.tool()
 def toggle_volume_rendering(enable: bool = True) -> str:
     """
     Toggle the visibility of volume rendering for the active source.
@@ -482,23 +516,6 @@ def reset_camera() -> str:
     success, message = pv_manager.reset_camera()
     return message
 
-# @mcp.tool()
-# def plot_over_line(point1: list = None, point2: list = None, resolution: int = 100) -> str:
-#     """
-#     Create a 'Plot Over Line' filter to sample data along a line between two points.
-
-#     Args:
-#         point1 (list, optional): The [x, y, z] coordinates of the start point. If None, will use data bounds.
-#         point2 (list, optional): The [x, y, z] coordinates of the end point. If None, will use data bounds.
-#         resolution (int, optional): Number of sample points along the line (default: 100).
-
-#     Returns:
-#         Status message
-#     """
-#     success, message, plot_filter = pv_manager.plot_over_line(point1, point2, resolution)
-#     return message
-
-# Compatible with OpenAI tool using
 @mcp.tool()
 def plot_over_line(point1: list[float] = None, point2: list[float] = None, resolution: int = 100) -> str:
     """
@@ -531,6 +548,74 @@ def warp_by_vector(vector_field: str = None, scale_factor: float = 1.0) -> str:
     return message
 
 @mcp.tool()
+def clear_pipeline_and_reset() -> str:
+    """
+    Clear the entire ParaView rendering pipeline and reset to a fresh state,
+    equivalent to restarting the application.
+    
+    This function:
+    - Deletes all sources and filters from the pipeline
+    - Resets all internal references
+    - Resets the camera and view settings
+    - Clears any cached data
+    
+    Returns:
+        Status message indicating success or failure
+    """
+    success, message = pv_manager.clear_pipeline_and_reset()
+    return message
+
+@mcp.tool()
+def set_background_color(red: float = 0.32, green: float = 0.34, blue: float = 0.43) -> str:
+    """
+    Set the background color of the active view.
+    
+    Args:
+        red (float): Red component (0.0 to 1.0). Default: 0.32
+        green (float): Green component (0.0 to 1.0). Default: 0.34  
+        blue (float): Blue component (0.0 to 1.0). Default: 0.43
+        
+    Note:
+        Default values approximate ParaView's default dark background.
+        
+    Returns:
+        Status message indicating the new background color
+    """
+    success, message = pv_manager.set_background_color(red, green, blue)
+    return message
+
+@mcp.tool()
+def get_histogram(field: str = None, num_bins: int = 256, data_location: str = "POINTS") -> str:
+    """
+    Compute and retrieve histogram data for a field in the active data source.
+    This function is designed to work with volume sources. By default it uses the
+    point data arrays (data_location="POINTS"), but you can specify "CELLS" if your
+    volume source stores scalars on cells.
+
+    If no field is provided and the active source contains exactly one available numeric 
+    field in the specified data location, that field is automatically used. If multiple 
+    arrays exist, the user must specify which field to use.
+
+    Args:
+        field (str, optional): The name of the field for which the histogram is computed.
+        num_bins (int, optional): Number of histogram bins (default is 256).
+        data_location (str, optional): Specify "POINTS" (default) or "CELLS" to indicate the source of the data.
+        
+    Returns:
+        Status message with histogram data formatted as string
+    """
+    success, message, histogram_data = pv_manager.get_histogram(field, num_bins, data_location)
+    if success and histogram_data:
+        # Format histogram data as readable string
+        hist_str = f"{message}\nHistogram data:\n"
+        for bin_center, frequency in histogram_data[:10]:  # Show first 10 bins
+            hist_str += f"  Bin {bin_center:.2f}: {frequency}\n"
+        if len(histogram_data) > 10:
+            hist_str += f"  ... ({len(histogram_data) - 10} more bins)"
+        return hist_str
+    return message
+
+@mcp.tool()
 def list_commands() -> str:
     """
     List all available commands in this ParaView MCP server.
@@ -542,24 +627,29 @@ def list_commands() -> str:
         "load_data: Load data from a file",
         "create_source: Create a geometric source (Sphere, Cone, etc.)",
         "create_isosurface: Create an isosurface visualization",
+        "create_clip: Create a clip filter to cut data with a plane",
         "create_slice: Create a slice through the data",
+        "clear_pipeline_and_reset: Clear all pipeline objects and reset to fresh state",
+        "set_background_color: Set the background color of the view",
         "toggle_volume_rendering: Enable or disable volume rendering",
-	    "toggle_visibility: Enable or disable visibility for the active source",
+        "toggle_visibility: Enable or disable visibility for the active source",
         "set_active_source: Set the active pipeline object by name",
         "get_active_source_names_by_type: Get a list of sources filtered by type",
         "color_by: Color the visualization by a field",
         # "set_color_map_preset: Set the color map preset",
+        "set_color_map: Set custom color transfer function for volume rendering",
         "set_representation_type: Set the representation type (Surface, Wireframe, etc.)",
         "edit_volume_opacity: Edit the opacity transfer function",
         "get_pipeline: Get the current pipeline structure",
         "get_available_arrays: Get available data arrays",
-        "create_streamline: Create stream line visualization",
+        "get_histogram: Compute histogram for a data field",
+        "create_streamline: Create stream line visualization with tubes",
         "compute_surface_area: Compute the surface area of the active surface",
         "save_contour_as_stl: Save the active surface as STL",
         "get_screenshot: Capture a screenshot and display it in chat",
         "rotate_camera: Rotate the camera view",
         "reset_camera: Reset the camera to show all data",
-        "plot_line: Plot a line through the data",
+        "plot_over_line: Create a plot over line filter",
         "warp_by_vector: Warp the active source by a vector field",
     ]
     

@@ -29,7 +29,7 @@ To set up integration with claude desktop, add the following to claude_desktop_c
       "ParaView": {
         "command": "/path/to/python",
         "args": [
-        "/path/to/paraview_mcp/paraview_mcp_server.py"
+        "/path/to/paraview_mcp/src/paraview_mcp_server.py"
         ]
       }
     }

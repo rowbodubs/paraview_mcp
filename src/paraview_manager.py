@@ -101,6 +101,7 @@ class ParaViewManager:
             
             # Record the directory of the loaded file so we can re-use it.
             self._data_folder = os.path.dirname(file_path)
+            print("@@@@@@ filepath:", file_path, "\n")
 
             # Get file extension
             _, file_extension = os.path.splitext(file_path)
@@ -193,6 +194,143 @@ class ParaViewManager:
         
         return reader
     
+    def clear_pipeline_and_reset(self):
+        """
+        Completely clear the ParaView pipeline and return the GUI to a clean,
+        freshly-started state.
+
+        Steps performed:
+        1.  Delete every source and filter currently in the pipeline.
+        2.  Wipe all cached handles in this `ParaViewManager` instance.
+        3.  Reset the active render view (camera, background, etc.).
+        4.  Force a render so the UI immediately reflects the change.
+
+        Returns
+        -------
+        (success: bool, message: str)
+        """
+        try:
+            # Core ParaView helpers we need
+            from paraview.simple import (
+                GetSources, Delete, GetActiveView, ResetCamera, Render
+            )
+
+            # --------------------------------------------------------
+            # 1.  Delete every pipeline object that exists
+            # --------------------------------------------------------
+            sources = GetSources()
+            num_sources = len(sources) if sources else 0
+
+            if sources:
+                # Collect proxies first, then delete – avoids iterator invalidation
+                proxies_to_delete = [proxy for (_, proxy) in sources.items()]
+                for proxy in proxies_to_delete:
+                    try:
+                        Delete(proxy)
+                    except Exception as err:
+                        self.logger.warning(f"Could not delete proxy: {err}")
+
+            # --------------------------------------------------------
+            # 2.  Reset our own cached state
+            # --------------------------------------------------------
+            self.original_source = None
+            if hasattr(self, "isosurface_filter"):
+                self.isosurface_filter = None
+            self._data_folder = ""
+
+            # --------------------------------------------------------
+            # 3.  Reset the active view & camera
+            # --------------------------------------------------------
+            view = GetActiveView()
+            if view:
+                # One call handles both camera framing *and* clipping range
+                ResetCamera(view)
+
+                # Set a neutral dark-grey background (solid, no gradient)
+                if hasattr(view, "Background"):
+                    view.Background = [0.32, 0.34, 0.43]
+                if hasattr(view, "Background2"):   # match Background -> no gradient
+                    view.Background2 = [0.32, 0.34, 0.43]
+
+                # Give users a sensible starting camera position
+                cam = view.GetActiveCamera()
+                if cam:
+                    cam.SetPosition(5.0, 5.0, 5.0)
+                    cam.SetFocalPoint(0.0, 0.0, 0.0)
+                    cam.SetViewUp(0.0, 0.0, 1.0)
+                    cam.SetViewAngle(30.0)
+                    cam.SetClippingRange(0.1, 1000.0)
+
+                # Center of rotation at the origin
+                if hasattr(view, "CenterOfRotation"):
+                    view.CenterOfRotation = [0.0, 0.0, 0.0]
+
+                # Ensure perspective projection
+                if hasattr(view, "CameraParallelProjection"):
+                    view.CameraParallelProjection = 0
+
+            # --------------------------------------------------------
+            # 4.  Force a redraw so the GUI updates immediately
+            # --------------------------------------------------------
+            try:
+                if view:
+                    Render(view)
+            except Exception as err:
+                self.logger.warning(f"Render failed after reset: {err}")
+
+            msg = (
+                "Pipeline cleared successfully. "
+                f"Removed {num_sources} source(s) and reset all view settings."
+            )
+            self.logger.info(msg)
+            return True, msg
+
+        except Exception as err:
+            error_msg = f"Error clearing pipeline: {err}"
+            self.logger.error(error_msg)
+            return False, error_msg
+
+    def set_background_color(self, red=0.32, green=0.34, blue=0.43):
+        """
+        Set the background color of the active view.
+        
+        Args:
+            red (float): Red component (0.0 to 1.0). Default: 0.32
+            green (float): Green component (0.0 to 1.0). Default: 0.34  
+            blue (float): Blue component (0.0 to 1.0). Default: 0.43
+            
+        Note:
+            Default values approximate ParaView's default dark background.
+            
+        Returns:
+            tuple: (success, message)
+        """
+        try:
+            from paraview.simple import GetActiveView, SetViewProperties
+            
+            view = GetActiveView()
+            if not view:
+                return False, "Error: No active view."
+            
+            # Validate color values
+            for value, name in [(red, 'red'), (green, 'green'), (blue, 'blue')]:
+                if not 0.0 <= value <= 1.0:
+                    return False, f"Error: {name} value must be between 0.0 and 1.0 (got {value})"
+            
+            # Set both Background and Background2 to the same color for solid color
+            SetViewProperties(
+                view,
+                Background=[red, green, blue],
+                Background2=[red, green, blue],  # Set same color to avoid gradient
+                UseColorPaletteForBackground=0
+            )
+            
+            return True, f"Background color set to RGB({red:.2f}, {green:.2f}, {blue:.2f})"
+            
+        except Exception as e:
+            self.logger.error(f"Error setting background color: {str(e)}")
+            return False, f"Error setting background color: {str(e)}"
+                
     def save_contour_as_stl(self, stl_filename="contour.stl"):
         """
         Save the active source (e.g. a contour) as an STL file in the same folder
@@ -461,7 +599,76 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error computing surface area: {str(e)}")
             return (False, f"Error computing surface area: {str(e)}", None)
+
+    def create_clip(self, origin_x=None, origin_y=None, origin_z=None,
+                    normal_x=1, normal_y=0, normal_z=0, invert=False):
+        """
+        Create a clip filter to cut the data with a plane.
         
+        Args:
+            origin_x, origin_y, origin_z: Coordinates for clip plane origin (default: center of dataset).
+                                        If None, it uses the dataset's center.
+            normal_x, normal_y, normal_z: Normal of the clip plane (default: [1, 0, 0] for y-z plane).
+            invert (bool): If False, keeps the positive side of the plane normal.
+                        If True, keeps the negative side of the plane normal.
+        
+        Returns:
+            tuple: (success: bool, message: str, clip_filter, clip_name: str)
+        """
+        try:
+            from paraview.simple import (
+                GetActiveView, SetActiveSource, Clip, Show, GetActiveSource
+            )
+            
+            base_source = self.original_source or GetActiveSource()
+            if not base_source:
+                return False, "Error: No active source. Load data first.", None, None
+            
+            # If origin is unspecified, use the center of the dataset
+            if origin_x is not None and origin_y is not None and origin_z is not None:
+                origin = [origin_x, origin_y, origin_z]
+            else:
+                info = base_source.GetDataInformation()
+                bounds = info.GetBounds()
+                origin = [
+                    (bounds[0] + bounds[1]) / 2,
+                    (bounds[2] + bounds[3]) / 2,
+                    (bounds[4] + bounds[5]) / 2
+                ]
+            
+            normal = [normal_x, normal_y, normal_z]
+            
+            # Create and configure the clip filter
+            clip_filter = Clip(Input=base_source)
+            clip_filter.ClipType = 'Plane'
+            clip_filter.ClipType.Origin = origin
+            clip_filter.ClipType.Normal = normal
+            
+            # Set invert property to control which side to keep
+            clip_filter.Invert = invert
+            
+            # Show the clipped result in the view
+            view = GetActiveView()
+            Show(clip_filter, view)
+            
+            # Set the clip as active source
+            SetActiveSource(clip_filter)
+            
+            # Get the source name using the helper function
+            clip_name = self._get_source_name(clip_filter)
+            
+            side_kept = "negative" if invert else "positive"
+            message = (
+                f"Created clip with plane at origin {origin}, normal {normal}. "
+                f"Keeping {side_kept} side of the plane. "
+                f"Clip name is: {clip_name}"
+            )
+            return True, message, clip_filter, clip_name
+            
+        except Exception as e:
+            self.logger.error(f"Error creating clip: {str(e)}")
+            return False, f"Error creating clip: {str(e)}", None, None
+                
     def create_slice(self, origin_x=None, origin_y=None, origin_z=None,
                  normal_x=0, normal_y=0, normal_z=1):
         """
