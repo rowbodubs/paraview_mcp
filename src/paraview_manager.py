@@ -101,7 +101,7 @@ class ParaViewManager:
             
             # Record the directory of the loaded file so we can re-use it.
             self._data_folder = os.path.dirname(file_path)
-            print("@@@@@@ filepath:", file_path, "\n")
+            # print("filepath:", file_path, "\n")
 
             # Get file extension
             _, file_extension = os.path.splitext(file_path)
