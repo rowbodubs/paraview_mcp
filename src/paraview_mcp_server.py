@@ -506,14 +506,22 @@ def rotate_camera(azimuth: float = 30.0, elevation: float = 0.0) -> str:
     return message
 
 @mcp.tool()
-def reset_camera() -> str:
+def reset_camera(padding_factor: float = 1.5) -> str:
     """
-    Reset the camera to show all data.
-    
+    Reset the camera to show all data with optional padding for better framing.
+
+    Args:
+        padding_factor (float): Multiplier for camera distance to add padding around objects.
+                               1.0 = no padding, 1.5 = 50% padding (default for better framing),
+                               2.0 = 100% padding. Recommended range: 1.0-2.0.
+
+    Tips: Use 1.5 (default) for evaluation/screenshots to ensure objects are well-framed.
+          Use 1.0 for tight framing when you need to see details.
+
     Returns:
         Status message
     """
-    success, message = pv_manager.reset_camera()
+    success, message = pv_manager.reset_camera(padding_factor)
     return message
 
 @mcp.tool()

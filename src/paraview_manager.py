@@ -1449,10 +1449,15 @@ class ParaViewManager:
             self.logger.error(f"Error rotating camera: {str(e)}")
             return False, f"Error rotating camera: {str(e)}"
     
-    def reset_camera(self):
+    def reset_camera(self, padding_factor=1.0):
         """
-        Reset the camera to show all data.
-        
+        Reset the camera to show all data with optional padding for better framing.
+
+        Args:
+            padding_factor (float): Multiplier for camera distance to add padding around objects.
+                                   1.0 = no padding (default), 1.5 = 50% padding, 2.0 = 100% padding.
+                                   Recommended range: 1.0-2.0.
+
         Returns:
             tuple: (success, message)
         """
@@ -1461,8 +1466,40 @@ class ParaViewManager:
             view = GetActiveView()
             if not view:
                 return False, "Error: No active view."
+
+            # Reset camera to fit all visible objects
             ResetCamera(view)
-            return True, "Camera reset"
+
+            # Apply padding by adjusting camera distance if requested
+            if padding_factor > 1.0:
+                camera = view.GetActiveCamera()
+                if camera:
+                    # Get current camera position and focal point
+                    position = camera.GetPosition()
+                    focal_point = camera.GetFocalPoint()
+
+                    # Calculate direction vector from focal point to camera
+                    import math
+                    dx = position[0] - focal_point[0]
+                    dy = position[1] - focal_point[1]
+                    dz = position[2] - focal_point[2]
+
+                    # Calculate current distance
+                    distance = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+                    # Apply padding factor
+                    if distance > 0:
+                        scale = padding_factor
+                        new_position = [
+                            focal_point[0] + dx * scale,
+                            focal_point[1] + dy * scale,
+                            focal_point[2] + dz * scale
+                        ]
+                        camera.SetPosition(new_position)
+                        view.Render()
+
+            padding_msg = f" with {padding_factor}x padding" if padding_factor > 1.0 else ""
+            return True, f"Camera reset{padding_msg}"
         except Exception as e:
             self.logger.error(f"Error resetting camera: {str(e)}")
             return False, f"Error resetting camera: {str(e)}"
