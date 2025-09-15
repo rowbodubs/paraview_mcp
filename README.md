@@ -40,7 +40,7 @@ To set up integration with claude desktop, add the following to claude_desktop_c
 ### 1. Start paraview server
 
 ```shell
-python pvserver --multi-clients
+pvserver --multi-clients
 ```
 
 ### 2. Connect to paraview server from paraview GUI (file -> connect)

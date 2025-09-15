@@ -616,6 +616,169 @@ def get_histogram(field: str = None, num_bins: int = 256, data_location: str = "
     return message
 
 @mcp.tool()
+def filter_data(filter_type: str = "threshold", field_name: str = None, min_value: float = None, 
+                max_value: float = None, invert: bool = False, all_points: bool = False) -> str:
+    """
+    Apply data filtering operations including threshold and selection extraction.
+    Combines threshold and extract selection functionality into a single versatile filter.
+    
+    Args:
+        filter_type (str): Type of filter - "threshold" or "extract_selection"
+        field_name (str, optional): Name of the scalar field to filter by. Auto-detected if None.
+        min_value (float, optional): Minimum threshold value
+        max_value (float, optional): Maximum threshold value  
+        invert (bool): Whether to invert the selection (keep values outside range)
+        all_points (bool): For threshold - whether to include all points in cells that pass
+        
+    Returns:
+        Status message
+    """
+    success, message, filter_obj, filter_name = pv_manager.filter_data(
+        filter_type, field_name, min_value, max_value, invert, all_points
+    )
+    if success:
+        return f"{message}. Filter registered as '{filter_name}'."
+    else:
+        return message
+
+@mcp.tool()
+def calculate_field(result_name: str, expression: str, attribute_mode: str = "Point Data") -> str:
+    """
+    Apply mathematical calculations to create new data fields.
+    Combines calculator functionality with support for common mathematical operations.
+    
+    Args:
+        result_name (str): Name for the new calculated field
+        expression (str): Mathematical expression to evaluate
+                        Examples: "sqrt(velocity_X^2 + velocity_Y^2 + velocity_Z^2)"
+                                "pressure * 2.0"  
+                                "coords_X + coords_Y + coords_Z"
+        attribute_mode (str): "Point Data" or "Cell Data" - where to store result
+        
+    Returns:
+        Status message
+    """
+    success, message, calc_filter, calc_name = pv_manager.calculate_field(result_name, expression, attribute_mode)
+    if success:
+        return f"{message}. Calculator registered as '{calc_name}'."
+    else:
+        return message
+
+@mcp.tool()  
+def transform_data(operation: str = "translate", translate_x: float = 0.0, translate_y: float = 0.0, 
+                   translate_z: float = 0.0, rotate_x: float = 0.0, rotate_y: float = 0.0, 
+                   rotate_z: float = 0.0, scale_x: float = 1.0, scale_y: float = 1.0, scale_z: float = 1.0) -> str:
+    """
+    Apply geometric transformations to datasets.
+    Combines translation, rotation, and scaling into a single versatile transform operation.
+    
+    Args:
+        operation (str): Transform type - "translate", "rotate", "scale", or "combined"
+        translate_x, translate_y, translate_z (float): Translation amounts
+        rotate_x, rotate_y, rotate_z (float): Rotation angles in degrees
+        scale_x, scale_y, scale_z (float): Scale factors
+        
+    Returns:
+        Status message
+    """
+    success, message, transform_filter, transform_name = pv_manager.transform_data(
+        operation, translate_x, translate_y, translate_z, 
+        rotate_x, rotate_y, rotate_z, scale_x, scale_y, scale_z
+    )
+    if success:
+        return f"{message}. Transform registered as '{transform_name}'."
+    else:
+        return message
+
+@mcp.tool()
+def create_vector_visualization(glyph_type: str = "arrow", vector_field: str = None, scale_factor: float = 1.0,
+                               scale_mode: str = "vector", max_number_of_glyphs: int = 5000) -> str:
+    """
+    Create vector field visualizations using glyphs.
+    Combines glyph functionality for arrows, cones, spheres to visualize vector data.
+    
+    Args:
+        glyph_type (str): Type of glyph - "arrow", "cone", "sphere", "line"
+        vector_field (str, optional): Name of vector field. Auto-detected if None.
+        scale_factor (float): Overall scaling factor for glyphs
+        scale_mode (str): "vector", "scalar", or "off" - how to scale glyphs
+        max_number_of_glyphs (int): Maximum number of glyphs to display
+        
+    Returns:
+        Status message
+    """
+    success, message, glyph_filter, glyph_name = pv_manager.create_vector_visualization(
+        glyph_type, vector_field, scale_factor, scale_mode, max_number_of_glyphs
+    )
+    if success:
+        return f"{message}. Glyph filter registered as '{glyph_name}'."
+    else:
+        return message
+
+@mcp.tool()
+def analyze_field_data(analysis_type: str = "gradient", field_name: str = None, compute_vorticity: bool = False,
+                       compute_divergence: bool = False, compute_qcriterion: bool = False) -> str:
+    """
+    Analyze field data including gradients, derivatives, and connectivity.
+    Combines gradient computation and connectivity analysis into a unified interface.
+    
+    Args:
+        analysis_type (str): "gradient", "connectivity", or "combined" 
+        field_name (str, optional): Field to analyze. Auto-detected if None.
+        compute_vorticity (bool): Compute vorticity for vector fields
+        compute_divergence (bool): Compute divergence for vector fields  
+        compute_qcriterion (bool): Compute Q-criterion for vector fields
+        
+    Returns:
+        Status message
+    """
+    success, message, analysis_filter, filter_name = pv_manager.analyze_field_data(
+        analysis_type, field_name, compute_vorticity, compute_divergence, compute_qcriterion
+    )
+    if success:
+        return f"{message}. Analysis filter registered as '{filter_name}'."
+    else:
+        return message
+
+@mcp.tool()
+def export_data(export_format: str = "csv", filename: str = None, export_type: str = "all") -> str:
+    """
+    Export data in various formats with enhanced capabilities.
+    Combines multiple export formats into a single versatile function.
+    
+    Args:
+        export_format (str): "csv", "vtk", "stl", "ply", "obj"
+        filename (str, optional): Output filename. Auto-generated if None.
+        export_type (str): "all", "points", "cells", "arrays" - what to export
+        
+    Returns:
+        Status message with export path
+    """
+    success, message, export_path = pv_manager.export_data(export_format, filename, export_type)
+    return message
+
+@mcp.tool()
+def create_delaunay3d(alpha: float = 0.0, offset: float = 2.0, tolerance: float = 0.001) -> str:
+    """
+    Create a 3D Delaunay triangulation of the active dataset.
+    
+    Args:
+        alpha (float): Specify alpha (or distance) value to control output. For non-zero alpha value, 
+                      only edges or triangles contained within alpha radius are output. 
+                      Default is 0.0 which produces the convex hull.
+        offset (float): Offset to multiply the radius of the circumsphere by. Default is 2.0.
+        tolerance (float): Specify a tolerance to control discarding of degenerate tetrahedra. Default is 0.001.
+    
+    Returns:
+        Status message
+    """
+    success, message, delaunay_filter, delaunay_name = pv_manager.create_delaunay3d(alpha, offset, tolerance)
+    if success:
+        return f"{message}. Filter registered as '{delaunay_name}'."
+    else:
+        return message
+
+@mcp.tool()
 def list_commands() -> str:
     """
     List all available commands in this ParaView MCP server.
@@ -629,6 +792,13 @@ def list_commands() -> str:
         "create_isosurface: Create an isosurface visualization",
         "create_clip: Create a clip filter to cut data with a plane",
         "create_slice: Create a slice through the data",
+        "create_delaunay3d: Create a 3D Delaunay triangulation of the dataset",
+        "filter_data: Apply threshold and data selection filters",
+        "calculate_field: Create new fields with mathematical expressions",
+        "transform_data: Apply geometric transformations (translate/rotate/scale)",
+        "create_vector_visualization: Visualize vector fields with glyphs (arrows/cones)",
+        "analyze_field_data: Compute gradients, connectivity analysis",
+        "export_data: Export data in multiple formats (CSV, VTK, STL, etc.)",
         "clear_pipeline_and_reset: Clear all pipeline objects and reset to fresh state",
         "set_background_color: Set the background color of the view",
         "toggle_volume_rendering: Enable or disable volume rendering",

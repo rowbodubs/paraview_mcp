@@ -90,7 +90,7 @@ class ParaViewManager:
         Load data from a file into ParaView
         
         Args:
-            file_path: Path to the data file
+            file_path: Path to the data file (can be relative or absolute)
             
         Returns:
             tuple: (success, message, reader, source_name)
@@ -99,9 +99,34 @@ class ParaViewManager:
             import os
             from paraview.simple import OpenDataFile, Show, GetActiveView
             
+            # Handle relative paths by checking multiple possible base directories
+            original_path = file_path
+            
+            # Convert to absolute path if it's relative
+            if not os.path.isabs(file_path):
+                # Try different base directories for relative paths
+                possible_bases = [
+                    os.getcwd(),  # Current working directory
+                    os.path.dirname(os.path.dirname(__file__)),  # Project root (parent of src/)
+                    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'eval')  # eval directory
+                ]
+                
+                for base_dir in possible_bases:
+                    test_path = os.path.join(base_dir, file_path)
+                    if os.path.exists(test_path):
+                        file_path = test_path
+                        break
+                else:
+                    # If still not found, use absolute path of original
+                    file_path = os.path.abspath(original_path)
+            
+            # Final check if file exists
+            if not os.path.exists(file_path):
+                self.logger.error(f"File not found: {file_path} (original: {original_path})")
+                return False, f"File not found: {file_path} (tried from multiple locations)", None, ""
+            
             # Record the directory of the loaded file so we can re-use it.
             self._data_folder = os.path.dirname(file_path)
-            # print("filepath:", file_path, "\n")
 
             # Get file extension
             _, file_extension = os.path.splitext(file_path)
@@ -131,8 +156,9 @@ class ParaViewManager:
             
             return True, f"Successfully loaded data from {file_path}", reader, source_name
         except Exception as e:
-            self.logger.error(f"Error loading data: {str(e)}")
-            return False, f"Error loading data: {str(e)}", None, ""
+            self.logger.error(f"Error loading data: {str(e)} file path{file_path}")
+            return False, f"Error loading data: {str(e)} file path{file_path}", None, ""
+        
 
     
     def _configure_raw_reader(self, file_path, file_name):
@@ -1528,3 +1554,487 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error creating warp by vector: {str(e)}")
             return False, f"Error creating warp by vector: {str(e)}", None
+
+    def create_delaunay3d(self, alpha=0.0, offset=2.0, tolerance=0.001):
+        """
+        Create a 3D Delaunay triangulation of the active dataset.
+        
+        Args:
+            alpha (float): Specify alpha (or distance) value to control output. For non-zero alpha value, 
+                          only edges or triangles contained within alpha radius are output. 
+                          Default is 0.0 which produces the convex hull.
+            offset (float): Offset to multiply the radius of the circumsphere by. Default is 2.0.
+            tolerance (float): Specify a tolerance to control discarding of degenerate tetrahedra. Default is 0.001.
+        
+        Returns:
+            tuple: (success: bool, message: str, delaunay_filter, delaunay_name: str)
+        """
+        try:
+            from paraview.simple import GetActiveSource, Delaunay3D, Show, GetActiveView, SetActiveSource
+            
+            source = GetActiveSource()
+            if not source:
+                return False, "Error: No active source. Load data first.", None, ""
+            
+            # Check if source has points to triangulate
+            data_info = source.GetDataInformation()
+            if data_info.GetNumberOfPoints() < 4:
+                return False, "Error: Source must have at least 4 points for 3D Delaunay triangulation.", None, ""
+            
+            # Create the Delaunay3D filter
+            delaunay_filter = Delaunay3D(Input=source)
+            delaunay_filter.Alpha = alpha
+            delaunay_filter.Offset = offset
+            delaunay_filter.Tolerance = tolerance
+            
+            # Show the result in the active view
+            view = GetActiveView()
+            display = Show(delaunay_filter, view)
+            
+            # Set to wireframe representation to clearly show the triangulation mesh
+            display.SetRepresentationType('Wireframe')
+            
+            # Set the delaunay filter as the active source
+            SetActiveSource(delaunay_filter)
+            
+            # Get the source name using the helper function
+            delaunay_name = self._get_source_name(delaunay_filter)
+            
+            message = f"Created 3D Delaunay triangulation with alpha={alpha}, offset={offset}, tolerance={tolerance}. Set to wireframe representation to show triangular mesh. Filter name: {delaunay_name}"
+            return True, message, delaunay_filter, delaunay_name
+            
+        except Exception as e:
+            self.logger.error(f"Error creating 3D Delaunay triangulation: {str(e)}")
+            return False, f"Error creating 3D Delaunay triangulation: {str(e)}", None, ""
+
+    def filter_data(self, filter_type="threshold", field_name=None, min_value=None, max_value=None, 
+                    invert=False, all_points=False):
+        """
+        Apply data filtering operations including threshold and selection extraction.
+        Combines threshold and extract selection functionality into a single versatile filter.
+        
+        Args:
+            filter_type (str): Type of filter - "threshold", "clip_scalar", or "extract_selection"
+            field_name (str): Name of the scalar field to filter by
+            min_value (float, optional): Minimum threshold value
+            max_value (float, optional): Maximum threshold value  
+            invert (bool): Whether to invert the selection (keep values outside range)
+            all_points (bool): For threshold - whether to include all points in cells that pass
+            
+        Returns:
+            tuple: (success: bool, message: str, filter_object, filter_name: str)
+        """
+        try:
+            from paraview.simple import GetActiveSource, Threshold, Show, GetActiveView, SetActiveSource
+            
+            source = GetActiveSource()
+            if not source:
+                return False, "Error: No active source. Load data first.", None, ""
+            
+            # Auto-detect field if not provided
+            if field_name is None:
+                data_info = source.GetDataInformation()
+                point_info = data_info.GetPointDataInformation()
+                if point_info.GetNumberOfArrays() > 0:
+                    field_name = point_info.GetArrayInformation(0).GetName()
+                else:
+                    cell_info = data_info.GetCellDataInformation()
+                    if cell_info.GetNumberOfArrays() > 0:
+                        field_name = cell_info.GetArrayInformation(0).GetName()
+                    else:
+                        return False, "Error: No data arrays found for filtering.", None, ""
+            
+            # Create appropriate filter based on type
+            if filter_type.lower() in ["threshold", "extract_selection"]:
+                filter_obj = Threshold(Input=source)
+                
+                # Set the scalar array to threshold by
+                filter_obj.Scalars = ['POINTS', field_name]  # Try points first
+                
+                # Handle threshold range
+                if min_value is not None and max_value is not None:
+                    filter_obj.ThresholdRange = [min_value, max_value]
+                elif min_value is not None:
+                    filter_obj.LowerThreshold = min_value
+                    filter_obj.UpperThreshold = float('inf')
+                elif max_value is not None:
+                    filter_obj.LowerThreshold = float('-inf')
+                    filter_obj.UpperThreshold = max_value
+                else:
+                    # Get data range for default thresholding
+                    data_info = source.GetDataInformation()
+                    point_info = data_info.GetPointDataInformation()
+                    for i in range(point_info.GetNumberOfArrays()):
+                        array_info = point_info.GetArrayInformation(i)
+                        if array_info.GetName() == field_name:
+                            data_range = array_info.GetComponentRange(0)
+                            mid_value = (data_range[0] + data_range[1]) / 2
+                            filter_obj.ThresholdRange = [mid_value, data_range[1]]
+                            break
+                
+                # Set additional properties
+                filter_obj.Invert = invert
+                # Note: AllPoints is not a valid property for Threshold filter in current ParaView version
+                
+                operation_desc = f"threshold on field '{field_name}'"
+                if min_value is not None and max_value is not None:
+                    operation_desc += f" range [{min_value}, {max_value}]"
+                elif min_value is not None:
+                    operation_desc += f" >= {min_value}"
+                elif max_value is not None:
+                    operation_desc += f" <= {max_value}"
+                
+            else:
+                return False, f"Error: Unsupported filter type '{filter_type}'.", None, ""
+            
+            # Show the result
+            view = GetActiveView()
+            Show(filter_obj, view)
+            SetActiveSource(filter_obj)
+            
+            # Get filter name
+            filter_name = self._get_source_name(filter_obj)
+            
+            message = f"Applied {operation_desc}. Filter name: {filter_name}"
+            if invert:
+                message += " (inverted)"
+                
+            return True, message, filter_obj, filter_name
+            
+        except Exception as e:
+            self.logger.error(f"Error applying data filter: {str(e)}")
+            return False, f"Error applying data filter: {str(e)}", None, ""
+
+    def calculate_field(self, result_name, expression, attribute_mode="Point Data"):
+        """
+        Apply mathematical calculations to create new data fields.
+        Combines calculator functionality with support for common mathematical operations.
+        
+        Args:
+            result_name (str): Name for the new calculated field
+            expression (str): Mathematical expression to evaluate
+                            Examples: "sqrt(velocity_X^2 + velocity_Y^2 + velocity_Z^2)"
+                                    "pressure * 2.0"
+                                    "coords_X + coords_Y + coords_Z"
+            attribute_mode (str): "Point Data" or "Cell Data" - where to store result
+            
+        Returns:
+            tuple: (success: bool, message: str, calculator, calculator_name: str)
+        """
+        try:
+            from paraview.simple import GetActiveSource, Calculator, Show, GetActiveView, SetActiveSource
+            
+            source = GetActiveSource()
+            if not source:
+                return False, "Error: No active source. Load data first.", None, ""
+            
+            # Create calculator filter
+            calc_filter = Calculator(Input=source)
+            calc_filter.ResultArrayName = result_name
+            calc_filter.Function = expression
+            calc_filter.AttributeType = attribute_mode
+            
+            # Show the result
+            view = GetActiveView()
+            Show(calc_filter, view)
+            SetActiveSource(calc_filter)
+            
+            # Get filter name
+            calc_name = self._get_source_name(calc_filter)
+            
+            message = f"Created calculated field '{result_name}' using expression '{expression}'. Calculator name: {calc_name}"
+            return True, message, calc_filter, calc_name
+            
+        except Exception as e:
+            self.logger.error(f"Error creating calculated field: {str(e)}")
+            return False, f"Error creating calculated field: {str(e)}", None, ""
+
+    def transform_data(self, operation="translate", translate_x=0.0, translate_y=0.0, translate_z=0.0,
+                      rotate_x=0.0, rotate_y=0.0, rotate_z=0.0, scale_x=1.0, scale_y=1.0, scale_z=1.0):
+        """
+        Apply geometric transformations to datasets.
+        Combines translation, rotation, and scaling into a single versatile transform operation.
+        
+        Args:
+            operation (str): Transform type - "translate", "rotate", "scale", or "combined"
+            translate_x, translate_y, translate_z (float): Translation amounts
+            rotate_x, rotate_y, rotate_z (float): Rotation angles in degrees
+            scale_x, scale_y, scale_z (float): Scale factors
+            
+        Returns:
+            tuple: (success: bool, message: str, transform, transform_name: str)
+        """
+        try:
+            from paraview.simple import GetActiveSource, Transform, Show, GetActiveView, SetActiveSource
+            
+            source = GetActiveSource()
+            if not source:
+                return False, "Error: No active source. Load data first.", None, ""
+            
+            # Create transform filter
+            transform_filter = Transform(Input=source)
+            transform_filter.Transform = 'Transform'
+            
+            # Apply transformations based on operation type
+            operations_applied = []
+            
+            if operation.lower() in ["translate", "combined"]:
+                if translate_x != 0.0 or translate_y != 0.0 or translate_z != 0.0:
+                    transform_filter.Transform.Translate = [translate_x, translate_y, translate_z]
+                    operations_applied.append(f"translate({translate_x}, {translate_y}, {translate_z})")
+            
+            if operation.lower() in ["rotate", "combined"]:
+                if rotate_x != 0.0 or rotate_y != 0.0 or rotate_z != 0.0:
+                    transform_filter.Transform.Rotate = [rotate_x, rotate_y, rotate_z]
+                    operations_applied.append(f"rotate({rotate_x}°, {rotate_y}°, {rotate_z}°)")
+            
+            if operation.lower() in ["scale", "combined"]:
+                if scale_x != 1.0 or scale_y != 1.0 or scale_z != 1.0:
+                    transform_filter.Transform.Scale = [scale_x, scale_y, scale_z]
+                    operations_applied.append(f"scale({scale_x}, {scale_y}, {scale_z})")
+            
+            # Show the result
+            view = GetActiveView()
+            Show(transform_filter, view)
+            SetActiveSource(transform_filter)
+            
+            # Get transform name
+            transform_name = self._get_source_name(transform_filter)
+            
+            operations_str = " + ".join(operations_applied) if operations_applied else "identity transform"
+            message = f"Applied geometric transform: {operations_str}. Transform name: {transform_name}"
+            
+            return True, message, transform_filter, transform_name
+            
+        except Exception as e:
+            self.logger.error(f"Error applying transform: {str(e)}")
+            return False, f"Error applying transform: {str(e)}", None, ""
+
+    def create_vector_visualization(self, glyph_type="arrow", vector_field=None, scale_factor=1.0, 
+                                   scale_mode="vector", max_number_of_glyphs=5000):
+        """
+        Create vector field visualizations using glyphs.
+        Combines glyph functionality for arrows, cones, spheres to visualize vector data.
+        
+        Args:
+            glyph_type (str): Type of glyph - "arrow", "cone", "sphere", "line"
+            vector_field (str, optional): Name of vector field. Auto-detected if None.
+            scale_factor (float): Overall scaling factor for glyphs
+            scale_mode (str): "vector", "scalar", or "off" - how to scale glyphs
+            max_number_of_glyphs (int): Maximum number of glyphs to display
+            
+        Returns:
+            tuple: (success: bool, message: str, glyph_filter, glyph_name: str)
+        """
+        try:
+            from paraview.simple import GetActiveSource, Glyph, Show, GetActiveView, SetActiveSource
+            
+            source = GetActiveSource()
+            if not source:
+                return False, "Error: No active source. Load data first.", None, ""
+            
+            # Auto-detect vector field if not provided
+            if vector_field is None:
+                data_info = source.GetDataInformation()
+                point_info = data_info.GetPointDataInformation()
+                for i in range(point_info.GetNumberOfArrays()):
+                    array_info = point_info.GetArrayInformation(i)
+                    if array_info.GetNumberOfComponents() >= 3:
+                        vector_field = array_info.GetName()
+                        break
+                
+                if vector_field is None:
+                    return False, "Error: No vector field found for glyph visualization.", None, ""
+            
+            # Create glyph filter
+            glyph_filter = Glyph(Input=source, GlyphType=glyph_type.title())
+            
+            # Set vector field for orientation and scaling
+            glyph_filter.OrientationArray = ['POINTS', vector_field]
+            glyph_filter.ScaleArray = ['POINTS', vector_field] if scale_mode == "vector" else ['POINTS', '']
+            glyph_filter.ScaleFactor = scale_factor
+            
+            # Control glyph density
+            glyph_filter.MaximumNumberOfSamplePoints = max_number_of_glyphs
+            
+            # Set scaling mode
+            if scale_mode.lower() == "vector":
+                glyph_filter.ScaleMode = 'vector'
+            elif scale_mode.lower() == "scalar":
+                glyph_filter.ScaleMode = 'scalar'
+            else:
+                glyph_filter.ScaleMode = 'off'
+            
+            # Show the result
+            view = GetActiveView()
+            Show(glyph_filter, view)
+            SetActiveSource(glyph_filter)
+            
+            # Get glyph name
+            glyph_name = self._get_source_name(glyph_filter)
+            
+            message = f"Created {glyph_type} glyph visualization for vector field '{vector_field}'. Filter name: {glyph_name}"
+            return True, message, glyph_filter, glyph_name
+            
+        except Exception as e:
+            self.logger.error(f"Error creating vector visualization: {str(e)}")
+            return False, f"Error creating vector visualization: {str(e)}", None, ""
+
+    def analyze_field_data(self, analysis_type="gradient", field_name=None, compute_vorticity=False, 
+                          compute_divergence=False, compute_qcriterion=False):
+        """
+        Analyze field data including gradients, derivatives, and connectivity.
+        Combines gradient computation and connectivity analysis into a unified interface.
+        
+        Args:
+            analysis_type (str): "gradient", "connectivity", or "combined"
+            field_name (str, optional): Field to analyze. Auto-detected if None.
+            compute_vorticity (bool): Compute vorticity for vector fields
+            compute_divergence (bool): Compute divergence for vector fields  
+            compute_qcriterion (bool): Compute Q-criterion for vector fields
+            
+        Returns:
+            tuple: (success: bool, message: str, analysis_filter, filter_name: str)
+        """
+        try:
+            from paraview.simple import (GetActiveSource, GradientOfUnstructuredDataSet, 
+                                       ConnectivityFilter, Show, GetActiveView, SetActiveSource)
+            
+            source = GetActiveSource()
+            if not source:
+                return False, "Error: No active source. Load data first.", None, ""
+            
+            # Auto-detect field if not provided
+            if field_name is None and analysis_type.lower() in ["gradient", "combined"]:
+                data_info = source.GetDataInformation()
+                point_info = data_info.GetPointDataInformation()
+                if point_info.GetNumberOfArrays() > 0:
+                    # Prefer vector fields for gradient analysis
+                    for i in range(point_info.GetNumberOfArrays()):
+                        array_info = point_info.GetArrayInformation(i)
+                        if array_info.GetNumberOfComponents() >= 3:
+                            field_name = array_info.GetName()
+                            break
+                    # Fall back to any field
+                    if field_name is None:
+                        field_name = point_info.GetArrayInformation(0).GetName()
+            
+            results = []
+            filter_objects = []
+            
+            # Apply gradient analysis
+            if analysis_type.lower() in ["gradient", "combined"]:
+                if field_name:
+                    gradient_filter = GradientOfUnstructuredDataSet(Input=source)
+                    gradient_filter.SelectInputScalars = ['POINTS', field_name]
+                    
+                    # Configure gradient computation options
+                    if compute_vorticity:
+                        gradient_filter.ComputeVorticity = True
+                    if compute_divergence:
+                        gradient_filter.ComputeDivergence = True
+                    if compute_qcriterion:
+                        gradient_filter.ComputeQCriterion = True
+                    
+                    Show(gradient_filter)
+                    filter_objects.append(gradient_filter)
+                    grad_name = self._get_source_name(gradient_filter)
+                    results.append(f"gradient analysis of '{field_name}' -> {grad_name}")
+                    
+                    # Set as active for further processing
+                    SetActiveSource(gradient_filter)
+                    primary_filter = gradient_filter
+                else:
+                    return False, "Error: No field available for gradient analysis.", None, ""
+            
+            # Apply connectivity analysis
+            if analysis_type.lower() in ["connectivity", "combined"]:
+                # Use current active source (might be gradient result)
+                current_source = GetActiveSource()
+                connectivity_filter = ConnectivityFilter(Input=current_source)
+                
+                Show(connectivity_filter)
+                filter_objects.append(connectivity_filter)
+                conn_name = self._get_source_name(connectivity_filter)
+                results.append(f"connectivity analysis -> {conn_name}")
+                
+                SetActiveSource(connectivity_filter)
+                primary_filter = connectivity_filter
+            
+            # Return information about primary filter
+            if filter_objects:
+                primary_name = self._get_source_name(primary_filter)
+                analysis_desc = " + ".join(results)
+                message = f"Applied field analysis: {analysis_desc}"
+                return True, message, primary_filter, primary_name
+            else:
+                return False, "Error: No analysis operations were performed.", None, ""
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing field data: {str(e)}")
+            return False, f"Error analyzing field data: {str(e)}", None, ""
+
+    def export_data(self, export_format="csv", filename=None, export_type="all"):
+        """
+        Export data in various formats with enhanced capabilities.
+        Combines multiple export formats into a single versatile function.
+        
+        Args:
+            export_format (str): "csv", "vtk", "stl", "ply", "obj" 
+            filename (str, optional): Output filename. Auto-generated if None.
+            export_type (str): "all", "points", "cells", "arrays" - what to export
+            
+        Returns:
+            tuple: (success: bool, message: str, exported_path: str)
+        """
+        try:
+            import os
+            from paraview.simple import GetActiveSource, SaveData
+            
+            source = GetActiveSource()
+            if not source:
+                return False, "Error: No active source. Load data first.", ""
+            
+            # Generate filename if not provided
+            if filename is None:
+                source_name = self._get_source_name(source) or "data"
+                filename = f"{source_name}_export.{export_format.lower()}"
+            
+            # Ensure we have the data folder path
+            if not hasattr(self, "_data_folder") or not self._data_folder:
+                export_path = os.path.join(os.getcwd(), filename)
+            else:
+                export_path = os.path.join(self._data_folder, filename)
+            
+            # Configure export options based on format
+            export_options = {}
+            
+            if export_format.lower() == "csv":
+                # For CSV, we typically want point data
+                export_options['UseArrayNames'] = True
+                export_options['UseStringDelimiter'] = True
+                
+            elif export_format.lower() in ["vtk", "vtu", "vtp"]:
+                # VTK formats support full data preservation
+                export_options['DataMode'] = 'Binary'  # More efficient than ASCII
+                
+            elif export_format.lower() in ["stl", "ply", "obj"]:
+                # Mesh formats - ensure we have surface data
+                data_info = source.GetDataInformation()
+                if data_info.GetDataSetType() not in [0, 4]:  # Not polydata or unstructured grid
+                    return False, f"Error: {export_format.upper()} export requires surface/mesh data. Current data type not suitable.", ""
+            
+            # Perform the export
+            SaveData(export_path, proxy=source, **export_options)
+            
+            # Verify export succeeded
+            if os.path.exists(export_path):
+                file_size = os.path.getsize(export_path)
+                message = f"Successfully exported data to {export_format.upper()} format: {export_path} ({file_size} bytes)"
+                return True, message, export_path
+            else:
+                return False, f"Error: Export to {export_path} failed - file not created.", ""
+            
+        except Exception as e:
+            self.logger.error(f"Error exporting data: {str(e)}")
+            return False, f"Error exporting data: {str(e)}", ""
