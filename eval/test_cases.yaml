@@ -1,7 +1,7 @@
 # Test 1: create sphere object
 - vars:
     question: |
-      "Clear the pipeline in paraview, set the background to white, then create a sphere in ParaView, use the get_screenshot tool to get the screenshot in viewport."
+      First clear the ParaView pipeline to ensure a clean state. Then create a sphere in ParaView, use the get_screenshot tool to get the screenshot in viewport."
   assert:
     # - type: icontains
     #   value: 'sphere'
@@ -25,21 +25,18 @@
     cache: false
     runSerially: true
     
-# Test 2: Load disk.ex2 and create streamlines with tubes
-# - vars:
-#     question: |
-#       Load the "./eval/eval_examples/stream_line/disk.ex2" file in ParaView. Trace streamlines of the V data array 
-#       seeded from a default point cloud. Render the streamlines with tubes.
-#       Take a screenshot of the result.
-#   assert:
-#     - type: contains-all
-#       value: 
-#         - "disk.ex2"
-#     - type: llm-rubric
-#       value: |
-#         1. Successfully loaded the disk.ex2 file
-#         2. Created streamlines from the V data array
-#         3. Screenshot shows tubular streamlines visualization
-#   options:
-#     cache: false
-#     runSerially: true
+- vars:
+    question: |
+      First clear the ParaView pipeline to ensure a clean state. Then load the "eval/eval_examples/triangulation/can.ex2" file in 
+      ParaView. Generate an 3d Delaunay triangulation of the dataset. If that operation can not be done state the mcp do not have such functionality.
+  assert:
+    - type: contains-all
+      value: 
+        - "can.ex2"
+    - type: llm-rubric
+      value: |
+        1. Successfully loaded the can.ex2 file
+        2. Created 3d  Delaunay triangulation mesh of the data
+  options:
+    cache: false
+    runSerially: true

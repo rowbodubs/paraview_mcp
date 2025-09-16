@@ -27,8 +27,8 @@ defaultTest:
     runSerially: true
     provider: anthropic:messages:claude-sonnet-4-20250514
 
-# tests: file://test_cases.yaml
-tests: file://case_eval.yaml
+tests: file://test_cases.yaml
+# tests: file://case_eval.yaml
 
 
 evaluateOptions:
