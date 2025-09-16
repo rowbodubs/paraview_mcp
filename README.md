@@ -35,7 +35,7 @@ To set up integration with claude desktop, add the following to claude_desktop_c
     }
 ```
 
-## running 
+## Running 
 
 ### 1. Start paraview server
 
@@ -48,6 +48,31 @@ pvserver --multi-clients
 ### 3. Start claude desktop app 
 
 ***
+
+## Evaluation
+
+### Setup
+
+1. **Install promptfoo**:
+```bash
+npm install -g promptfoo
+```
+
+2. **Start ParaView server** (if not already running):
+```bash
+pvserver --multi-clients --server-port=11111
+```
+Then connect ParaView GUI to the server (File -> Connect -> localhost:11111)
+
+### Run Tests
+
+```bash
+# Run evaluation with Claude
+promptfoo eval --no-cache -c eval/eval_claude.yaml --verbose
+```
+
+The `--no-cache` flag ensures fresh test runs, and `--verbose` provides detailed debugging output.
+
 
 ## Citing Paraview_MCP
 
@@ -65,7 +90,7 @@ S. Liu, H. Miao, and P.-T. Bremer, “Paraview-MCP: Autonomous Visualization Age
 ```
 
 ## Authors 
-Paraview_MCP was created by Shusen Liu (liu42@llnl.gov) and Haichao Miao (miao1@llnl.gov)
+Paraview_MCP was originally created by Shusen Liu (liu42@llnl.gov) and Haichao Miao (miao1@llnl.gov)
 
 ## License
 Paraview_MCP is distributed under the terms of the BSD-3 license.
