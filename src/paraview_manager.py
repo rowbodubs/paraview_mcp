@@ -98,7 +98,7 @@ class ParaViewManager:
         try:
             import os
             from paraview.simple import OpenDataFile, Show, GetActiveView
-            
+
             # Handle relative paths by checking multiple possible base directories
             original_path = file_path
             
@@ -158,7 +158,6 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error loading data: {str(e)} file path{file_path}")
             return False, f"Error loading data: {str(e)} file path{file_path}", None, ""
-        
 
     
     def _configure_raw_reader(self, file_path, file_name):
@@ -178,6 +177,7 @@ class ParaViewManager:
         # Expected format: name_XxYxZ_datatype.raw (e.g., foot_256x256x256_uint8.raw)
         dimensions_match = re.search(r'(\d+)x(\d+)x(\d+)', file_name)
         datatype_match = re.search(r'_(uint8|uint16|int8|int16|float32|float64)', file_name.lower())
+        scalar_components_match = re.search(r'_scalar(\d+)', file_name.lower())
         
         # Load the raw file
         reader = OpenDataFile(file_path)
@@ -213,13 +213,22 @@ class ParaViewManager:
         
         # Set other common properties for raw files
         reader.DataByteOrder = 'LittleEndian'  # Default to LittleEndian
-        reader.NumberOfScalarComponents = 1    # Default to single component
+        
+        # Set number of scalar components based on filename or default to 1
+        if scalar_components_match:
+            num_components = int(scalar_components_match.group(1))
+            reader.NumberOfScalarComponents = num_components
+            self.logger.info(f"Detected scalar components: {num_components}")
+        else:
+            reader.NumberOfScalarComponents = 1    # Default to single component
         
         self.logger.info(f"Configured RAW reader with: ScalarType={reader.DataScalarType}, " +
-                         f"ByteOrder={reader.DataByteOrder}, Extent={reader.DataExtent}")
+                         f"ByteOrder={reader.DataByteOrder}, Extent={reader.DataExtent}, " +
+                         f"NumberOfScalarComponents={reader.NumberOfScalarComponents}")
         
         return reader
     
+
     def clear_pipeline_and_reset(self):
         """
         Completely clear the ParaView pipeline and return the GUI to a clean,
@@ -357,6 +366,7 @@ class ParaViewManager:
             self.logger.error(f"Error setting background color: {str(e)}")
             return False, f"Error setting background color: {str(e)}"
                 
+     
     def save_contour_as_stl(self, stl_filename="contour.stl"):
         """
         Save the active source (e.g. a contour) as an STL file in the same folder
@@ -426,6 +436,9 @@ class ParaViewManager:
             elif source_type == "box":
                 from paraview.simple import Box
                 source = Box()
+            elif source_type == "glyph":
+                from paraview.simple import Glyph
+                source = Glyph()
             else:
                 return False, f"Unsupported source type: {source_type}", None, ""
             
@@ -626,6 +639,7 @@ class ParaViewManager:
             self.logger.error(f"Error computing surface area: {str(e)}")
             return (False, f"Error computing surface area: {str(e)}", None)
 
+
     def create_clip(self, origin_x=None, origin_y=None, origin_z=None,
                     normal_x=1, normal_y=0, normal_z=0, invert=False):
         """
@@ -694,7 +708,8 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error creating clip: {str(e)}")
             return False, f"Error creating clip: {str(e)}", None, None
-                
+           
+
     def create_slice(self, origin_x=None, origin_y=None, origin_z=None,
                  normal_x=0, normal_y=0, normal_z=1):
         """
@@ -2075,3 +2090,42 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error exporting data: {str(e)}")
             return False, f"Error exporting data: {str(e)}", ""
+
+    
+    def save_state(self, save_directory: str, filename: str = "paraview_state.pvsm") -> tuple[bool, str, str]:
+        """
+        Save the current ParaView state to a file.
+        
+        Args:
+            save_directory: Directory where the state file will be saved
+            filename: Name of the state file (default: "paraview_state.pvsm")
+            
+        Returns:
+            tuple: (success, message, file_path)
+        """
+        try:
+            import os
+            from pathlib import Path
+            
+            # Ensure the directory exists
+            save_dir = Path(save_directory)
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Ensure filename has .pvsm extension
+            if not filename.endswith('.pvsm'):
+                filename += '.pvsm'
+                
+            # Full path to the state file
+            state_file_path = save_dir / filename
+            
+            # Save the state
+            SaveState(str(state_file_path))
+            
+            message = f"ParaView state saved successfully to: {state_file_path}"
+            self.logger.info(message)
+            return True, message, str(state_file_path)
+            
+        except Exception as e:
+            error_msg = f"Error saving ParaView state: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg, ""

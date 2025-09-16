@@ -93,6 +93,57 @@ def save_contour_as_stl(stl_filename: str = "contour.stl") -> str:
     return message
 
 @mcp.tool()
+def save_paraview_state(save_directory: str, filename: str = "paraview_state.pvsm") -> str:
+    """
+    Save the current ParaView state to a file in the specified directory.
+    This saves the complete visualization pipeline, camera settings, and all current configurations.
+    
+    Args:
+        save_directory: Directory path where the state file will be saved
+        filename: Name of the state file (default: "paraview_state.pvsm"). .pvsm extension will be added if not present.
+    
+    Returns:
+        Status message with the full path to the saved state file
+    """
+    success, message, file_path = pv_manager.save_state(save_directory, filename)
+    if success:
+        return f"{message}"
+    else:
+        return message
+
+@mcp.tool()
+def save_txt_file(file_path: str, content: str) -> str:
+    """
+    Save text content to a file at the specified path.
+    
+    Args:
+        file_path: Full path where the text file will be saved (including filename and extension)
+        content: Text content to write to the file
+    
+    Returns:
+        Status message indicating success or failure
+    """
+    try:
+        from pathlib import Path
+        
+        # Convert to Path object for easier handling
+        path = Path(file_path)
+        
+        # Create parent directories if they don't exist
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write content to file
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        logger.info(f"Successfully saved text file to: {path}")
+        return f"Successfully saved text file to: {path}"
+        
+    except Exception as e:
+        logger.error(f"Error saving text file: {str(e)}")
+        return f"Error saving text file: {str(e)}"
+
+@mcp.tool()
 def create_source(source_type: str) -> str:
     """
     Create a new geometric source.
@@ -266,7 +317,7 @@ def get_active_source_names_by_type(source_type: str = None) -> str:
         return message
 
 # @mcp.tool()
-# def edit_volume_opacity(field_name: str, opacity_points: list) -> str:
+# def edit_volume_opacity(field_name: str, opacity_points: list[tuple[float, float]]) -> str:
 #     """
 #     Edit ONLY the opacity transfer function for the specified field,
 #     ensuring we pass only (value, alpha) pairs.
@@ -303,7 +354,7 @@ def edit_volume_opacity(field_name: str, opacity_points: list[dict[str, float]])
     return message
 
 # @mcp.tool()
-# def set_color_map(field_name: str, color_points: list) -> str:
+# def set_color_map(field_name: str, color_points: list[tuple[float, tuple[float, float, float]]]) -> str:
 #     """
 #     Sets the color transfer function for the specified field.
 
@@ -321,7 +372,6 @@ def edit_volume_opacity(field_name: str, opacity_points: list[dict[str, float]])
 #     success, message = pv_manager.set_color_map(field_name, color_points)
 #     return message
 
-# Compatible with OpenAI tool using
 @mcp.tool()
 def set_color_map(field_name: str, color_points: list[dict]) -> str:
     """
@@ -539,6 +589,7 @@ def plot_over_line(point1: list[float] = None, point2: list[float] = None, resol
     """
     success, message, plot_filter = pv_manager.plot_over_line(point1, point2, resolution)
     return message
+
 
 @mcp.tool()
 def warp_by_vector(vector_field: str = None, scale_factor: float = 1.0) -> str:
@@ -829,6 +880,8 @@ def list_commands() -> str:
         "reset_camera: Reset the camera to show all data",
         "plot_over_line: Create a plot over line filter",
         "warp_by_vector: Warp the active source by a vector field",
+        "save_paraview_state: Save the current ParaView state to a file",
+        "save_txt_file: Save text content to a file",
     ]
     
     return "Available ParaView commands:\n\n" + "\n".join(commands)
