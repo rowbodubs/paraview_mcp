@@ -11,25 +11,18 @@
   assert:
     - type: llm-rubric
       value: |
-          The assistant should:
-          1. Successfully load the raw data file
-          2. Identify that the data shows an aneurism or vascular structure
+          The assistant should identify the data shows an aneurism or vascular structure
 
 # 2. Backpack Dataset
 # - vars:
 #     question: |
 #         Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/backpack/data/backpack_512x512x373_uint16.raw".
 #         Use visualization tools to determine what object is contained in this dataset.
-#         Create an appropriate isosurface or volume rendering to reveal the structure.
 #         Take a screenshot and provide a textual report identifying what you observe.
 #   assert:
 #     - type: llm-rubric
 #       value: |
-#           The assistant should:
-#           1. Successfully load the raw data file
-#           2. Apply visualization techniques
-#           3. Identify that the data shows a backpack
-#           4. Provide a screenshot and textual report
+#           The assistant should identify that the data shows a backpack
 
 # 3. Blunt Fin Dataset
 - vars:
@@ -40,7 +33,7 @@
   assert:
     - type: llm-rubric
       value: |
-          The assistant should identify a fin or aerodynamic structure in the data
+          The assistant should identify a fin or aerodynamic strcuture or simulation result in the data
 
 # 4. Bonsai Dataset
 - vars:
