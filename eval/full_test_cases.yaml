@@ -44,7 +44,7 @@
   assert:
     - type: llm-rubric
       value: |
-          Should identify a bonsai tree or botanical structure in the data
+          Should identify a bonsai tree or botanical / tree structure in the data
 
 # 5. Boston Teapot Dataset
 - vars:
