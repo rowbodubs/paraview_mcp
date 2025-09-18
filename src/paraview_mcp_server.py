@@ -50,8 +50,22 @@ When using ParaView through this interface, please follow these guidelines:
     
 logger = logging.getLogger("pv_external_mcp")
 
-# Create the ParaView manager
-pv_manager = ParaViewManager()
+# Create the ParaView manager with configurable screenshot compression
+# Environment variables can override defaults:
+# - PARAVIEW_COMPRESS_SCREENSHOTS: "true"/"false" (default: true)
+# - PARAVIEW_MAX_SCREENSHOT_WIDTH: integer (default: 1280)
+# - PARAVIEW_SCREENSHOT_QUALITY: 1-100 (default: 85)
+
+import os
+compress_screenshots = os.environ.get("PARAVIEW_COMPRESS_SCREENSHOTS", "true").lower() == "true"
+max_width = int(os.environ.get("PARAVIEW_MAX_SCREENSHOT_WIDTH", "1280"))
+quality = int(os.environ.get("PARAVIEW_SCREENSHOT_QUALITY", "85"))
+
+pv_manager = ParaViewManager(
+    compress_screenshots=compress_screenshots,
+    max_screenshot_width=max_width,
+    screenshot_quality=quality
+)
 
 # Initialize FastMCP server for Claude Desktop integration with default prompt
 mcp = FastMCP("ParaView", system_prompt=default_prompt)
@@ -72,6 +86,69 @@ def load_data(file_path: str) -> str:
         Status message
     """
     success, message, _, source_name = pv_manager.load_data(file_path)
+    if success:
+        return f"{message}. Source registered as '{source_name}'."
+    else:
+        return message
+
+@mcp.tool()
+def load_raw_data(file_path: str,
+                 dimensions: list[float],
+                 data_type: str = 'uint8',
+                 byte_order: str = 'LittleEndian',
+                 spacing: list[float] = None,
+                 num_components: int = 1) -> str:
+    """
+    Load RAW volume data with explicit specifications.
+
+    This function is essential for loading raw binary data files that don't have
+    embedded metadata. You must specify the dimensions and data type.
+
+    Args:
+        file_path: Path to the RAW data file
+        dimensions: List of 3 values [x, y, z] specifying the data dimensions
+        data_type: Data type - one of: 'uint8', 'uint16', 'int8', 'int16', 'float32', 'float64'
+        byte_order: Byte order - either 'LittleEndian' (default) or 'BigEndian'
+        spacing: Optional list of 3 values [sx, sy, sz] for data spacing. Default is [1, 1, 1]
+        num_components: Number of scalar components (default: 1)
+
+    Returns:
+        Status message indicating success or failure
+
+    Examples:
+        # Load a 256x256x256 uint8 volume
+        load_raw_data("data.raw", [256, 256, 256], "uint8")
+
+        # Load a 512x512x128 float32 volume with custom spacing
+        load_raw_data("volume.raw", [512, 512, 128], "float32", spacing=[0.5, 0.5, 2.0])
+
+        # Load multi-component data
+        load_raw_data("vector_field.raw", [128, 128, 128], "float32", num_components=3)
+    """
+    # Convert lists to tuples for the manager
+    dims_tuple = tuple(dimensions) if dimensions else (256, 256, 256)
+
+    # Handle spacing
+    if spacing:
+        spacing_tuple = tuple(spacing)
+    else:
+        spacing_tuple = (1, 1, 1)
+
+    # Validate data type
+    valid_types = ['uint8', 'uint16', 'int8', 'int16', 'float32', 'float64']
+    if data_type not in valid_types:
+        return f"Invalid data_type '{data_type}'. Must be one of: {', '.join(valid_types)}"
+
+    # Call the manager's load_raw_data method
+    success, message, _, source_name = pv_manager.load_raw_data(
+        file_path,
+        dimensions=dims_tuple,
+        data_type=data_type,
+        byte_order=byte_order,
+        spacing=spacing_tuple,
+        num_components=num_components
+    )
+
     if success:
         return f"{message}. Source registered as '{source_name}'."
     else:
@@ -523,15 +600,48 @@ def create_streamline(seed_point_number: int, vector_field: str = None,
         return message
 
 @mcp.tool()
+def configure_screenshot_compression(
+    enable_compression: bool = None,
+    max_width: int = None,
+    quality: int = None
+) -> str:
+    """
+    Configure screenshot compression settings to reduce token usage.
+
+    This is useful for managing API token limits when screenshots are too large.
+    Default settings compress images to ~100-200KB instead of several MB.
+
+    Args:
+        enable_compression: Enable/disable compression. None keeps current setting.
+        max_width: Maximum width in pixels (height scales proportionally). None keeps current.
+        quality: JPEG quality 1-100 (85 recommended). None keeps current.
+
+    Returns:
+        Current settings after update
+    """
+    if enable_compression is not None:
+        pv_manager.compress_screenshots = enable_compression
+
+    if max_width is not None and max_width > 0:
+        pv_manager.max_screenshot_width = max_width
+
+    if quality is not None and 1 <= quality <= 100:
+        pv_manager.screenshot_quality = quality
+
+    return (f"Screenshot settings: compression={'enabled' if pv_manager.compress_screenshots else 'disabled'}, "
+            f"max_width={pv_manager.max_screenshot_width}px, "
+            f"quality={pv_manager.screenshot_quality}")
+
+@mcp.tool()
 def get_screenshot() -> str:
     """
     Capture a screenshot of the current view and display it in chat.
-    
-    Args:
-        display_in_chat: Whether to return the image data for display in chat
-    
+
+    By default, screenshots are compressed to reduce token usage (JPEG, max 1280px width).
+    Use configure_screenshot_compression() to adjust settings if needed.
+
     Returns:
-        Image data or path
+        Compressed image for display in chat
     """
     success, message, img_path = pv_manager.get_screenshot()    
 
@@ -575,6 +685,24 @@ def reset_camera(padding_factor: float = 1.5) -> str:
     return message
 
 @mcp.tool()
+def reset_colormaps(array_name: str = None) -> str:
+    """
+    Reset colormaps and transfer functions to default settings.
+
+    This is useful after loading new data or when colormaps become misconfigured.
+    Resets both color and opacity transfer functions to sensible defaults.
+
+    Args:
+        array_name: Specific array name to reset. If None, resets common arrays
+                   like 'ImageFile', 'MetaImage', 'Scalars_', 'RTData', 'PointData'.
+
+    Returns:
+        Status message indicating which colormaps were reset
+    """
+    success, message = pv_manager.reset_colormaps(array_name)
+    return message
+
+@mcp.tool()
 def plot_over_line(point1: list[float] = None, point2: list[float] = None, resolution: int = 100) -> str:
     """
     Create a 'Plot Over Line' filter to sample data along a line between two points.
@@ -611,11 +739,12 @@ def clear_pipeline_and_reset() -> str:
     """
     Clear the entire ParaView rendering pipeline and reset to a fresh state,
     equivalent to restarting the application.
-    
+
     This function:
     - Deletes all sources and filters from the pipeline
     - Resets all internal references
     - Resets the camera and view settings
+    - Reinitializes colormaps and transfer functions
     - Clears any cached data
     
     Returns:

@@ -15,14 +15,30 @@ class ParaViewManager:
     a clean interface for the MCP server.
     """
 
-    def __init__(self):
-        """Initialize the ParaView manager"""
+    def __init__(self, compress_screenshots=True, max_screenshot_width=1280, screenshot_quality=85):
+        """
+        Initialize the ParaView manager
+
+        Args:
+            compress_screenshots (bool): Whether to compress screenshots to reduce token usage.
+                                        Default: True (recommended for API usage)
+            max_screenshot_width (int): Maximum width for screenshots when compression is enabled.
+                                       Height is scaled proportionally. Default: 1280
+            screenshot_quality (int): JPEG quality (1-100) when compression is enabled.
+                                    Default: 85 (good quality with significant size reduction)
+        """
         self.connection = None
         self.logger = logging.getLogger("paraview_manager")
         # This will always hold the originally loaded data source,
         # which is needed for operations like volume rendering.
         self.original_source = None
         self._data_folder = ""
+
+        # Screenshot compression settings
+        self.compress_screenshots = compress_screenshots
+        self.max_screenshot_width = max_screenshot_width
+        self.screenshot_quality = screenshot_quality
+        self.logger.info(f"ParaViewManager initialized with screenshot compression: {compress_screenshots}")
     
     def _get_source_name(self, proxy):
         """
@@ -146,8 +162,27 @@ class ParaViewManager:
             # Show in the active view
             view = GetActiveView()
             display = Show(reader, view)
-            display.ScaleFactor = 0.5
-            view.ResetCamera(False)
+
+            # For RAW files, check if it's 3D and set appropriate representation
+            if file_extension == '.raw' and hasattr(reader, 'DataExtent'):
+                extent = reader.DataExtent
+                # Check if this is 3D data (z dimension > 1)
+                if extent and len(extent) >= 6 and extent[5] - extent[4] > 0:
+                    # Use Outline representation to avoid slice mapper issues
+                    display.SetRepresentationType('Outline')
+                    self.logger.info("Set representation to Outline for 3D RAW data")
+            else:
+                display.ScaleFactor = 0.5
+
+            view.ResetCamera()  # Allow full camera reset including clipping range
+
+            # Add some padding by zooming out slightly for better framing
+            cam = view.GetActiveCamera()
+            if cam:
+                cam.Dolly(0.7)  # Zoom out by 30% for better initial view
+                from paraview.simple import Render
+                Render()  # Update the view after camera adjustment
+
             # Save the loaded reader as the original data source
             self.original_source = reader
             
@@ -160,74 +195,203 @@ class ParaViewManager:
             return False, f"Error loading data: {str(e)} file path{file_path}", None, ""
 
     
-    def _configure_raw_reader(self, file_path, file_name):
+    def _configure_raw_reader(self, file_path, file_name, dimensions=None, data_type=None,
+                             byte_order=None, num_components=None):
         """
         Configure a reader for RAW volume files
-        
+
         Args:
             file_path: Path to the RAW file
             file_name: Name of the file
-            
+            dimensions: Optional tuple of (x, y, z) dimensions
+            data_type: Optional data type string (uint8, uint16, float32, etc.)
+            byte_order: Optional byte order ('LittleEndian' or 'BigEndian')
+            num_components: Optional number of scalar components
+
         Returns:
             reader: Configured reader object
         """
         from paraview.simple import OpenDataFile
-        
-        # Try to parse dimensions and data type from filename
-        # Expected format: name_XxYxZ_datatype.raw (e.g., foot_256x256x256_uint8.raw)
-        dimensions_match = re.search(r'(\d+)x(\d+)x(\d+)', file_name)
-        datatype_match = re.search(r'_(uint8|uint16|int8|int16|float32|float64)', file_name.lower())
-        scalar_components_match = re.search(r'_scalar(\d+)', file_name.lower())
-        
+
+        # If parameters not provided, try to parse from filename
+        if dimensions is None or data_type is None:
+            # Try to parse dimensions and data type from filename
+            # Expected format: name_XxYxZ_datatype.raw (e.g., foot_256x256x256_uint8.raw)
+            dimensions_match = re.search(r'(\d+)x(\d+)x(\d+)', file_name)
+            datatype_match = re.search(r'_(uint8|uint16|int8|int16|float32|float64)', file_name.lower())
+            scalar_components_match = re.search(r'_scalar(\d+)', file_name.lower())
+
+            if dimensions is None and dimensions_match:
+                dimensions = (int(dimensions_match.group(1)),
+                            int(dimensions_match.group(2)),
+                            int(dimensions_match.group(3)))
+
+            if data_type is None and datatype_match:
+                data_type = datatype_match.group(1)
+
+            if num_components is None and scalar_components_match:
+                num_components = int(scalar_components_match.group(1))
+
         # Load the raw file
         reader = OpenDataFile(file_path)
         if not reader:
             return None
-        
-        # Set reader properties based on filename
-        if dimensions_match:
-            dim_x = int(dimensions_match.group(1))
-            dim_y = int(dimensions_match.group(2))
-            dim_z = int(dimensions_match.group(3))
+
+        # Set reader properties
+        if dimensions:
+            dim_x, dim_y, dim_z = [int(d) for d in dimensions]
             reader.DataExtent = [0, dim_x-1, 0, dim_y-1, 0, dim_z-1]
             reader.FileDimensionality = 3
-            self.logger.info(f"Detected dimensions: {dim_x}x{dim_y}x{dim_z}")
-        
-        if datatype_match:
-            datatype = datatype_match.group(1)
-            # Map to ParaView data types
-            datatype_map = {
-                'uint8': 'unsigned char',
-                'uint16': 'unsigned short',
-                'int8': 'char',
-                'int16': 'short',
-                'float32': 'float',
-                'float64': 'double'
-            }
-            if datatype in datatype_map:
-                reader.DataScalarType = datatype_map[datatype]
-                self.logger.info(f"Detected data type: {datatype_map[datatype]}")
+            self.logger.info(f"Set dimensions: {dim_x}x{dim_y}x{dim_z}")
+
+        # Map to ParaView data types
+        datatype_map = {
+            'uint8': 'unsigned char',
+            'uint16': 'unsigned short',
+            'int8': 'char',
+            'int16': 'short',
+            'float32': 'float',
+            'float64': 'double'
+        }
+
+        if data_type and data_type in datatype_map:
+            reader.DataScalarType = datatype_map[data_type]
+            self.logger.info(f"Set data type: {datatype_map[data_type]}")
         else:
             # Default to unsigned char if not specified
             reader.DataScalarType = 'unsigned char'
-        
-        # Set other common properties for raw files
-        reader.DataByteOrder = 'LittleEndian'  # Default to LittleEndian
-        
-        # Set number of scalar components based on filename or default to 1
-        if scalar_components_match:
-            num_components = int(scalar_components_match.group(1))
+
+        # Set byte order
+        if byte_order:
+            reader.DataByteOrder = byte_order
+        else:
+            reader.DataByteOrder = 'LittleEndian'  # Default to LittleEndian
+
+        # Set number of scalar components
+        if num_components:
             reader.NumberOfScalarComponents = num_components
-            self.logger.info(f"Detected scalar components: {num_components}")
+            self.logger.info(f"Set scalar components: {num_components}")
         else:
             reader.NumberOfScalarComponents = 1    # Default to single component
-        
+
         self.logger.info(f"Configured RAW reader with: ScalarType={reader.DataScalarType}, " +
                          f"ByteOrder={reader.DataByteOrder}, Extent={reader.DataExtent}, " +
                          f"NumberOfScalarComponents={reader.NumberOfScalarComponents}")
-        
+
         return reader
     
+
+    def load_raw_data(self, file_path, dimensions, data_type, byte_order='LittleEndian',
+                     spacing=(1, 1, 1), num_components=1):
+        """
+        Load RAW data from a file with explicit parameters
+
+        Args:
+            file_path: Path to the RAW data file
+            dimensions: Tuple of (x, y, z) dimensions
+            data_type: Data type string (uint8, uint16, int8, int16, float32, float64)
+            byte_order: Byte order ('LittleEndian' or 'BigEndian'), default: 'LittleEndian'
+            spacing: Data spacing tuple (sx, sy, sz), default: (1, 1, 1)
+            num_components: Number of scalar components, default: 1
+
+        Returns:
+            tuple: (success, message, reader, source_name)
+
+        Example:
+            # Load a 256x256x256 uint8 volume
+            success, msg, reader, name = manager.load_raw_data(
+                "data.raw",
+                dimensions=(256, 256, 256),
+                data_type='uint8'
+            )
+        """
+        try:
+            import os
+            from paraview.simple import Show, GetActiveView
+
+            # Handle relative paths
+            original_path = file_path
+
+            # Convert to absolute path if it's relative
+            if not os.path.isabs(file_path):
+                possible_bases = [
+                    os.getcwd(),
+                    os.path.dirname(os.path.dirname(__file__)),
+                    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'eval'),
+                    self._data_folder if self._data_folder else ""
+                ]
+
+                for base_dir in possible_bases:
+                    if base_dir:
+                        test_path = os.path.join(base_dir, file_path)
+                        if os.path.exists(test_path):
+                            file_path = test_path
+                            break
+                else:
+                    file_path = os.path.abspath(original_path)
+
+            # Check if file exists
+            if not os.path.exists(file_path):
+                self.logger.error(f"File not found: {file_path}")
+                return False, f"File not found: {file_path}", None, ""
+
+            # Record the directory
+            self._data_folder = os.path.dirname(file_path)
+            file_name = os.path.basename(file_path)
+
+            # Configure and load the RAW reader with explicit parameters
+            reader = self._configure_raw_reader(
+                file_path, file_name,
+                dimensions=dimensions,
+                data_type=data_type,
+                byte_order=byte_order,
+                num_components=num_components
+            )
+
+            if not reader:
+                return False, f"Failed to load RAW data from {file_path}", None, ""
+
+            # Set data spacing if provided
+            if hasattr(reader, 'DataSpacing') and spacing != (1, 1, 1):
+                reader.DataSpacing = list(spacing)
+                self.logger.info(f"Set data spacing: {spacing}")
+
+            # Show in the active view
+            view = GetActiveView()
+            display = Show(reader, view)
+
+            # For 3D data, ensure we use volume or outline representation
+            # to avoid the image slice mapper error
+            if dimensions and len(dimensions) == 3:
+                dim_x, dim_y, dim_z = [int(d) for d in dimensions]
+                if dim_z > 1:  # This is 3D data
+                    # Use Outline representation to avoid slice mapper issues
+                    display.SetRepresentationType('Outline')
+                    self.logger.info("Set representation to Outline for 3D data")
+
+            view.ResetCamera()  # Allow full camera reset including clipping range
+
+            # Add some padding by zooming out slightly for better framing
+            cam = view.GetActiveCamera()
+            if cam:
+                cam.Dolly(0.7)  # Zoom out by 30% for better initial view
+                from paraview.simple import Render
+                Render()  # Update the view after camera adjustment
+
+            # Save as original source
+            self.original_source = reader
+
+            # Get the source name
+            source_name = self._get_source_name(reader)
+
+            # Convert dimensions to integers for display
+            int_dimensions = tuple(int(d) for d in dimensions)
+            self.logger.info(f"Successfully loaded RAW data from {file_path}")
+            return True, f"Successfully loaded RAW data from {file_path} with dimensions {int_dimensions}", reader, source_name
+
+        except Exception as e:
+            self.logger.error(f"Error loading RAW data: {str(e)}")
+            return False, f"Error loading RAW data: {str(e)}", None, ""
 
     def clear_pipeline_and_reset(self):
         """
@@ -237,8 +401,9 @@ class ParaViewManager:
         Steps performed:
         1.  Delete every source and filter currently in the pipeline.
         2.  Wipe all cached handles in this `ParaViewManager` instance.
-        3.  Reset the active render view (camera, background, etc.).
-        4.  Force a render so the UI immediately reflects the change.
+        3.  Reset the active render view (camera, background, colormaps, etc.).
+        4.  Reset all visualization settings to defaults.
+        5.  Force a render so the UI immediately reflects the change.
 
         Returns
         -------
@@ -247,7 +412,8 @@ class ParaViewManager:
         try:
             # Core ParaView helpers we need
             from paraview.simple import (
-                GetSources, Delete, GetActiveView, ResetCamera, Render
+                GetSources, Delete, GetActiveView, ResetCamera, Render,
+                GetColorTransferFunction, GetOpacityTransferFunction
             )
 
             # --------------------------------------------------------
@@ -274,7 +440,28 @@ class ParaViewManager:
             self._data_folder = ""
 
             # --------------------------------------------------------
-            # 3.  Reset the active view & camera
+            # 3.  Reset colormaps and transfer functions
+            # --------------------------------------------------------
+            # Reset commonly used colormaps to default ranges
+            common_arrays = ['ImageFile', 'MetaImage', 'Scalars_', 'RTData']
+            for array_name in common_arrays:
+                try:
+                    # Reset color transfer function
+                    ctf = GetColorTransferFunction(array_name)
+                    if ctf:
+                        ctf.RescaleTransferFunction(0.0, 255.0)  # Default range for uint8
+                        # Reset to default colormap (e.g., Cool to Warm)
+                        ctf.ApplyPreset('Cool to Warm', True)
+
+                    # Reset opacity transfer function
+                    otf = GetOpacityTransferFunction(array_name)
+                    if otf:
+                        otf.Points = [0.0, 0.0, 0.5, 0.0, 255.0, 1.0, 0.5, 0.0]  # Default linear
+                except:
+                    pass  # Ignore if the array doesn't exist
+
+            # --------------------------------------------------------
+            # 4.  Reset the active view & camera
             # --------------------------------------------------------
             view = GetActiveView()
             if view:
@@ -287,25 +474,36 @@ class ParaViewManager:
                 if hasattr(view, "Background2"):   # match Background -> no gradient
                     view.Background2 = [0.32, 0.34, 0.43]
 
-                # Give users a sensible starting camera position
+                # Let ResetCamera handle the camera position based on data bounds
+                # Only set view up and ensure proper projection
                 cam = view.GetActiveCamera()
                 if cam:
-                    cam.SetPosition(5.0, 5.0, 5.0)
-                    cam.SetFocalPoint(0.0, 0.0, 0.0)
+                    # Keep Z-up orientation which is common for many datasets
                     cam.SetViewUp(0.0, 0.0, 1.0)
+                    # Use the default view angle
                     cam.SetViewAngle(30.0)
-                    cam.SetClippingRange(0.1, 1000.0)
 
-                # Center of rotation at the origin
-                if hasattr(view, "CenterOfRotation"):
-                    view.CenterOfRotation = [0.0, 0.0, 0.0]
+                # Center of rotation should match camera focal point for intuitive rotation
+                if hasattr(view, "CenterOfRotation") and cam:
+                    view.CenterOfRotation = cam.GetFocalPoint()
 
                 # Ensure perspective projection
                 if hasattr(view, "CameraParallelProjection"):
                     view.CameraParallelProjection = 0
 
+                # Reset any view-specific settings
+                # For ParaView 5.10+, use BackgroundColorMode instead of UseGradientBackground
+                if hasattr(view, "BackgroundColorMode"):
+                    view.BackgroundColorMode = 'Single Color'  # Use single color, not gradient
+                elif hasattr(view, "UseGradientBackground"):
+                    # Fallback for older versions
+                    view.UseGradientBackground = 0
+
+                if hasattr(view, "OrientationAxesVisibility"):
+                    view.OrientationAxesVisibility = 1  # Show orientation axes
+
             # --------------------------------------------------------
-            # 4.  Force a redraw so the GUI updates immediately
+            # 5.  Force a redraw so the GUI updates immediately
             # --------------------------------------------------------
             try:
                 if view:
@@ -315,7 +513,8 @@ class ParaViewManager:
 
             msg = (
                 "Pipeline cleared successfully. "
-                f"Removed {num_sources} source(s) and reset all view settings."
+                f"Removed {num_sources} source(s), reset all view settings, "
+                "and reinitialized colormaps."
             )
             self.logger.info(msg)
             return True, msg
@@ -1397,18 +1596,19 @@ class ParaViewManager:
 
     def get_screenshot(self):
         """
-        Capture a screenshot from the current view.
-        
+        Capture a screenshot from the current view with optional compression.
+
         Returns:
             tuple: (success, message, img_path)
         """
         try:
             from paraview.collaboration import processServerEvents
             import tempfile
+            import os
             processServerEvents()
             from paraview import servermanager
-            from paraview.simple import SetActiveView, RenderAllViews, SaveScreenshot, ResetCamera
-            
+            from paraview.simple import SetActiveView, RenderAllViews, SaveScreenshot
+
             # Get the active render view from the GUI connection
             pxm = servermanager.ProxyManager()
             gui_view = None
@@ -1417,23 +1617,88 @@ class ParaViewManager:
                 if view_proxy.GetXMLName() == "RenderView":
                     gui_view = view_proxy
                     break
-            
+
             if not gui_view:
-                print("No existing GUI render view found. Make sure the ParaView GUI is connected.")
-                import sys
-                sys.exit(1)
-            
+                self.logger.error("No existing GUI render view found. Make sure the ParaView GUI is connected.")
+                return False, "No GUI render view found. Ensure ParaView GUI is connected.", None
+
             # Set the found GUI view active
             SetActiveView(gui_view)
             RenderAllViews()
-            
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+
+            # Determine output format and path based on compression settings
+            if self.compress_screenshots:
+                # Use JPEG for compression
+                suffix = '.jpg'
+                file_format = 'JPEG'
+            else:
+                # Use PNG for lossless quality
+                suffix = '.png'
+                file_format = 'PNG'
+
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 temp_path = tmp.name
-            
-            SaveScreenshot(temp_path, gui_view)
-            # SaveScreenshot(temp_path, gui_view, ImageResolution=[1920, 1080])            
+
+            # Save screenshot with appropriate settings
+            if self.compress_screenshots:
+                # Get current view size to calculate proportional scaling
+                view_size = gui_view.GetPropertyValue("ViewSize")
+                if view_size and len(view_size) >= 2:
+                    width, height = view_size[0], view_size[1]
+
+                    # Calculate new dimensions maintaining aspect ratio
+                    if width > self.max_screenshot_width:
+                        scale_factor = self.max_screenshot_width / width
+                        new_width = self.max_screenshot_width
+                        new_height = int(height * scale_factor)
+                    else:
+                        new_width = width
+                        new_height = height
+
+                    # Save with specified resolution
+                    SaveScreenshot(temp_path, gui_view,
+                                 ImageResolution=[new_width, new_height])
+
+                    self.logger.info(f"Screenshot saved with compression: {new_width}x{new_height}, "
+                                   f"quality={self.screenshot_quality}")
+                else:
+                    # Fallback if we can't get view size
+                    SaveScreenshot(temp_path, gui_view,
+                                 ImageResolution=[self.max_screenshot_width,
+                                               int(self.max_screenshot_width * 0.75)])
+            else:
+                # Save at full resolution without compression
+                SaveScreenshot(temp_path, gui_view)
+                self.logger.info("Screenshot saved at full resolution without compression")
+
+            # If using JPEG, apply quality setting using PIL if available
+            if self.compress_screenshots and file_format == 'JPEG':
+                try:
+                    from PIL import Image
+                    # Re-save with specified quality
+                    img = Image.open(temp_path)
+
+                    # Convert RGBA to RGB if necessary (JPEG doesn't support transparency)
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                        img = rgb_img
+
+                    # Save with quality setting
+                    img.save(temp_path, 'JPEG', quality=self.screenshot_quality, optimize=True)
+
+                    # Log file size for monitoring
+                    file_size_kb = os.path.getsize(temp_path) / 1024
+                    self.logger.info(f"Screenshot compressed to {file_size_kb:.1f} KB")
+                except ImportError:
+                    self.logger.warning("PIL not available for JPEG quality control")
+                except Exception as e:
+                    self.logger.warning(f"Could not optimize JPEG: {e}")
+
             return True, "Screenshot captured", temp_path
+
         except Exception as e:
             self.logger.error(f"Error getting screenshot: {str(e)}")
             return False, f"Error getting screenshot: {str(e)}", None
@@ -1464,6 +1729,69 @@ class ParaViewManager:
             self.logger.error(f"Error rotating camera: {str(e)}")
             return False, f"Error rotating camera: {str(e)}"
     
+    def reset_colormaps(self, array_name=None):
+        """
+        Reset colormaps and transfer functions to default settings.
+
+        Args:
+            array_name: Specific array name to reset. If None, resets common arrays.
+
+        Returns:
+            tuple: (success, message)
+        """
+        try:
+            from paraview.simple import (
+                GetColorTransferFunction, GetOpacityTransferFunction,
+                GetActiveSource, GetActiveView, Render
+            )
+
+            arrays_reset = []
+
+            if array_name:
+                # Reset specific array
+                try:
+                    ctf = GetColorTransferFunction(array_name)
+                    if ctf:
+                        ctf.RescaleTransferFunction(0.0, 255.0)
+                        ctf.ApplyPreset('Cool to Warm', True)
+                        arrays_reset.append(array_name)
+
+                    otf = GetOpacityTransferFunction(array_name)
+                    if otf:
+                        otf.Points = [0.0, 0.0, 0.5, 0.0, 255.0, 1.0, 0.5, 0.0]
+                except Exception as e:
+                    self.logger.warning(f"Could not reset colormap for {array_name}: {e}")
+            else:
+                # Reset common arrays
+                common_arrays = ['ImageFile', 'MetaImage', 'Scalars_', 'RTData', 'PointData']
+                for arr in common_arrays:
+                    try:
+                        ctf = GetColorTransferFunction(arr)
+                        if ctf:
+                            ctf.RescaleTransferFunction(0.0, 255.0)
+                            ctf.ApplyPreset('Cool to Warm', True)
+                            arrays_reset.append(arr)
+
+                        otf = GetOpacityTransferFunction(arr)
+                        if otf:
+                            otf.Points = [0.0, 0.0, 0.5, 0.0, 255.0, 1.0, 0.5, 0.0]
+                    except:
+                        pass
+
+            # Force render to show changes
+            view = GetActiveView()
+            if view:
+                Render(view)
+
+            if arrays_reset:
+                return True, f"Reset colormaps for: {', '.join(arrays_reset)}"
+            else:
+                return True, "No colormaps needed resetting"
+
+        except Exception as e:
+            self.logger.error(f"Error resetting colormaps: {str(e)}")
+            return False, f"Error resetting colormaps: {str(e)}"
+
     def reset_camera(self, padding_factor=1.0):
         """
         Reset the camera to show all data with optional padding for better framing.
@@ -1477,7 +1805,7 @@ class ParaViewManager:
             tuple: (success, message)
         """
         try:
-            from paraview.simple import GetActiveView, ResetCamera
+            from paraview.simple import GetActiveView, ResetCamera, Render
             view = GetActiveView()
             if not view:
                 return False, "Error: No active view."
@@ -1511,7 +1839,7 @@ class ParaViewManager:
                             focal_point[2] + dz * scale
                         ]
                         camera.SetPosition(new_position)
-                        view.Render()
+                        Render(view)
 
             padding_msg = f" with {padding_factor}x padding" if padding_factor > 1.0 else ""
             return True, f"Camera reset{padding_msg}"

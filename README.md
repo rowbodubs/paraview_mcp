@@ -73,6 +73,54 @@ promptfoo eval --no-cache -c eval/eval_claude.yaml --verbose
 
 The `--no-cache` flag ensures fresh test runs, and `--verbose` provides detailed debugging output.
 
+## Data Anonymization
+
+To prevent evaluation bias from metadata or file naming patterns, ParaView-MCP includes a tool to anonymize datasets and test files.
+
+### Usage
+
+```bash
+# Anonymize a test file and copy all referenced datasets
+python eval/anonymize_dataset.py test.yaml
+
+# Quick mode - only update YAML paths without copying data files
+python eval/anonymize_dataset.py test.yaml --quick
+
+# Custom output directory
+python eval/anonymize_dataset.py test.yaml -o my_output_dir
+
+# Preview changes without writing files
+python eval/anonymize_dataset.py test.yaml --dry-run
+
+# Save mapping for later reference
+python eval/anonymize_dataset.py test.yaml -m mapping.json
+```
+
+### What Gets Anonymized
+
+- **Dataset names**: `aneurism` → `dataset_001`
+- **Descriptive filenames**: `aneurism_256x256x256_uint8.raw` → `data_001.raw`
+- **File paths in YAML**: All paths updated to point to anonymized versions
+- **Directory structure**: Organized as `output_dir/dataset_XXX/data/`
+
+### Output
+
+The tool creates:
+1. `test_anonymized.yaml` - Updated test file with anonymous paths
+2. `eval/anonymized_datasets/` - Directory containing copied, anonymized data files
+3. `mapping.json` (optional) - Record of all name mappings
+
+### Example
+
+Original YAML:
+```yaml
+question: "Load ../SciVisAgentBench-tasks/aneurism/data/aneurism_256x256x256_uint8.raw"
+```
+
+Anonymized YAML:
+```yaml
+question: "Load eval/anonymized_datasets/dataset_001/data/data_000.raw"
+```
 
 ## Citing Paraview_MCP
 

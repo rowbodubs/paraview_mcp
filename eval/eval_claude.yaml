@@ -19,7 +19,9 @@ providers:
 prompts:
   - |
     You are a helpful assistant. Please answer the following question:
-    {{question}}
+    {{question}}. Use maximum of 5 visualization call.
+    
+# The eval dataset is at ../SciVisAgentBench-tasks/, and each task should start with a clear operation to reset paraview
 
 # Configure default test settings for model-graded assertions
 defaultTest:
@@ -27,8 +29,7 @@ defaultTest:
     runSerially: true
     provider: anthropic:messages:claude-sonnet-4-20250514
 
-tests: file://test_cases.yaml
-# tests: file://case_eval.yaml
+# tests: file://test_cases.yaml
 
 
 evaluateOptions:
