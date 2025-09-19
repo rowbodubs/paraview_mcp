@@ -586,12 +586,10 @@ class ParaViewManager:
             if not active_source:
                 return False, "Error: No active source to save.", ""
 
-            # Check that we have a recorded data folder
+            # Check that we have a recorded data folder, use current directory as fallback
             if not hasattr(self, "_data_folder") or not self._data_folder:
-                return False, (
-                    "Error: No data folder known. "
-                    "Did you load data first before saving?"
-                ), ""
+                self._data_folder = os.getcwd()
+                self.logger.info(f"No data folder set, using current directory: {self._data_folder}")
 
             # Compose the full path in the same folder as the loaded data
             full_path = os.path.join(self._data_folder, stl_filename)
@@ -2031,9 +2029,10 @@ class ParaViewManager:
                 # Set the scalar array to threshold by
                 filter_obj.Scalars = ['POINTS', field_name]  # Try points first
                 
-                # Handle threshold range
+                # Handle threshold range - use LowerThreshold/UpperThreshold for ParaView 5.10+ compatibility
                 if min_value is not None and max_value is not None:
-                    filter_obj.ThresholdRange = [min_value, max_value]
+                    filter_obj.LowerThreshold = min_value
+                    filter_obj.UpperThreshold = max_value
                 elif min_value is not None:
                     filter_obj.LowerThreshold = min_value
                     filter_obj.UpperThreshold = float('inf')
@@ -2049,7 +2048,8 @@ class ParaViewManager:
                         if array_info.GetName() == field_name:
                             data_range = array_info.GetComponentRange(0)
                             mid_value = (data_range[0] + data_range[1]) / 2
-                            filter_obj.ThresholdRange = [mid_value, data_range[1]]
+                            filter_obj.LowerThreshold = mid_value
+                            filter_obj.UpperThreshold = data_range[1]
                             break
                 
                 # Set additional properties
@@ -2236,14 +2236,18 @@ class ParaViewManager:
             
             # Control glyph density
             glyph_filter.MaximumNumberOfSamplePoints = max_number_of_glyphs
-            
-            # Set scaling mode
+
+            # Set scaling mode using the VectorScaleMode property
             if scale_mode.lower() == "vector":
-                glyph_filter.ScaleMode = 'vector'
+                glyph_filter.ScaleByVector = 1
+                glyph_filter.ScaleFactor = scale_factor
             elif scale_mode.lower() == "scalar":
-                glyph_filter.ScaleMode = 'scalar'
+                glyph_filter.ScaleByVector = 0
+                glyph_filter.ScaleFactor = scale_factor
             else:
-                glyph_filter.ScaleMode = 'off'
+                # No scaling - use uniform size
+                glyph_filter.ScaleByVector = 0
+                glyph_filter.ScaleFactor = scale_factor
             
             # Show the result
             view = GetActiveView()
@@ -2380,19 +2384,23 @@ class ParaViewManager:
                 source_name = self._get_source_name(source) or "data"
                 filename = f"{source_name}_export.{export_format.lower()}"
             
-            # Ensure we have the data folder path
+            # Ensure we have the data folder path, use current directory as fallback
             if not hasattr(self, "_data_folder") or not self._data_folder:
-                export_path = os.path.join(os.getcwd(), filename)
-            else:
-                export_path = os.path.join(self._data_folder, filename)
+                self._data_folder = os.getcwd()
+                self.logger.info(f"No data folder set, using current directory: {self._data_folder}")
+            export_path = os.path.join(self._data_folder, filename)
             
             # Configure export options based on format
             export_options = {}
             
             if export_format.lower() == "csv":
                 # For CSV, we typically want point data
-                export_options['UseArrayNames'] = True
-                export_options['UseStringDelimiter'] = True
+                # Note: Some ParaView versions may not support all options
+                try:
+                    # Try to set options if they exist
+                    export_options['FieldAssociation'] = 'Point Data'
+                except:
+                    pass  # Option not available in this version
                 
             elif export_format.lower() in ["vtk", "vtu", "vtp"]:
                 # VTK formats support full data preservation
