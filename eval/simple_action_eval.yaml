@@ -121,11 +121,14 @@
     cache: false
     runSerially: true
 
-# Test 9: set_active_source - Switch back to original data
+# Test 9: set_active_source - Switch between sources
 - vars:
     question: |
-      Use the set_active_source function to set the active source back to "disk.ex2".
-      Respond with <1> if the active source was successfully set, or <0> if it failed. Give a simple reason and end with a <1> and <0>
+      First, clean up, and then load "eval/eval_examples/stream_line/disk.ex2" using load_data and note the source name it returns.
+      Then create an isosurface with create_isosurface (value=0.5, field="Pres") which will create "Contour1".
+      Use get_pipeline to verify both sources exist.
+      Finally, use set_active_source with the original source name from load_data (not "disk.ex2" but the actual registered name like "IOSSReader1").
+      Respond with <1> if you successfully switched between the sources, or <0> if it failed. Give a simple reason and end with a <1> and <0>
   assert:
     - type: contains-all
       value: "<1>"
@@ -316,7 +319,8 @@
 # Test 22: toggle_volume_rendering - Enable volume rendering
 - vars:
     question: |
-      Use the toggle_volume_rendering function to enable volume rendering (enable=true).
+      First, use load_data to load "eval/eval_examples/triangulation/can.ex2".
+      Then use the toggle_volume_rendering function to enable volume rendering (enable=true).
       Respond with <1> if volume rendering was successfully enabled, or <0> if it failed. Give a simple reason and end with a <1> and <0>
   assert:
     - type: contains-all

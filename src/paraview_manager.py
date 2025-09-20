@@ -2237,16 +2237,17 @@ class ParaViewManager:
             # Control glyph density
             glyph_filter.MaximumNumberOfSamplePoints = max_number_of_glyphs
 
-            # Set scaling mode using the VectorScaleMode property
+            # Set scaling mode using the VectorScaleMode property (ParaView 5.x+)
             if scale_mode.lower() == "vector":
-                glyph_filter.ScaleByVector = 1
+                # When scaling by vector, use VectorScaleMode property
+                glyph_filter.VectorScaleMode = 'Scale by Magnitude'
                 glyph_filter.ScaleFactor = scale_factor
             elif scale_mode.lower() == "scalar":
-                glyph_filter.ScaleByVector = 0
+                # ScaleArray already set to appropriate scalar field above
                 glyph_filter.ScaleFactor = scale_factor
             else:
                 # No scaling - use uniform size
-                glyph_filter.ScaleByVector = 0
+                glyph_filter.ScaleArray = ['POINTS', '']
                 glyph_filter.ScaleFactor = scale_factor
             
             # Show the result
