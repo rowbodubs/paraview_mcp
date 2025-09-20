@@ -1,2 +1,8 @@
+# Core dependencies
 mcp[cli]
 httpx
+Pillow>=9.0.0
+
+# Note: ParaView Python bindings must be installed separately
+# They come with the ParaView installation and cannot be pip installed
+# See: https://www.paraview.org/download/
