@@ -19,7 +19,8 @@ providers:
 prompts:
   - |
     You are a visualization experts. Please answer the following question:
-    {{question}}. Use maximum of 10 visualization calls, you can rotate the data around for more informative views.
+    {{question}}. 
+    Use maximum of 15 visualization calls, you can rotate the data around and take screenshot when necessary for more informative views and verfiy the results.
     
 # The eval dataset is at ../SciVisAgentBench-tasks/, and each task should start with a clear operation to reset paraview
 
