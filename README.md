@@ -49,9 +49,60 @@ pvserver --multi-clients
 
 ***
 
+## Testing
+
+### Unit and Integration Tests
+
+ParaView-MCP includes comprehensive unit and integration tests to ensure reliability.
+
+#### Prerequisites
+
+1. **Install test dependencies**:
+```bash
+pip install pytest pytest-cov
+```
+
+2. **Start ParaView server** (required for integration tests):
+```bash
+pvserver --multi-clients --server-port=11111
+```
+
+3. **Connect ParaView GUI** to the server:
+   - Open ParaView GUI
+   - File -> Connect -> Add Server
+   - Host: localhost, Port: 11111
+   - Connect
+
+#### Running Tests
+
+```bash
+# Run live integration tests (requires running ParaView server)
+pytest tests/test_paraview_manager_live.py -v
+
+# Run with coverage report
+pytest tests/test_paraview_manager_live.py --cov=src --cov-report=html
+
+# Run specific test class
+pytest tests/test_paraview_manager_live.py::TestParaViewLive -v
+
+# Run specific test method
+pytest tests/test_paraview_manager_live.py::TestParaViewLive::test_create_sphere -v
+```
+
+#### Test Structure
+
+- **`tests/test_paraview_manager_live.py`**: Live integration tests with ParaView
+  - Tests real ParaView operations
+  - Verifies end-to-end functionality
+  - Requires running ParaView server connected on port 11111
+
 ## Evaluation
 
-### Setup
+### Promptfoo Evaluation Framework
+
+For comprehensive feature testing using LLM evaluation:
+
+#### Setup
 
 1. **Install promptfoo**:
 ```bash
@@ -64,11 +115,17 @@ pvserver --multi-clients --server-port=11111
 ```
 Then connect ParaView GUI to the server (File -> Connect -> localhost:11111)
 
-### Run Tests
+#### Run Evaluation Tests
 
 ```bash
 # Run evaluation with Claude
 promptfoo eval --no-cache -c eval/eval_claude.yaml --verbose
+
+# Run simple action tests
+promptfoo eval --no-cache -c eval/eval_claude.yaml -t eval/simple_action_eval.yaml --verbose
+
+# Run basic feature validation
+promptfoo eval --no-cache -c eval/eval_claude.yaml -t eval/basic_features_validation.yaml --verbose
 ```
 
 The `--no-cache` flag ensures fresh test runs, and `--verbose` provides detailed debugging output.

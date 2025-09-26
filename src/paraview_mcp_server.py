@@ -879,24 +879,31 @@ def transform_data(operation: str = "translate", translate_x: float = 0.0, trans
         return message
 
 @mcp.tool()
-def create_vector_visualization(glyph_type: str = "arrow", vector_field: str = None, scale_factor: float = 1.0,
-                               scale_mode: str = "vector", max_number_of_glyphs: int = 5000) -> str:
+def create_vector_visualization(glyph_type: str = "arrow", vector_field: str = None, scale_factor: float = None,
+                               scale_mode: str = "vector", max_number_of_glyphs: int = 5000, auto_scale: bool = True,
+                               scale_percentage: float = 0.01) -> str:
     """
     Create vector field visualizations using glyphs.
     Combines glyph functionality for arrows, cones, spheres to visualize vector data.
-    
+
     Args:
         glyph_type (str): Type of glyph - "arrow", "cone", "sphere", "line"
         vector_field (str, optional): Name of vector field. Auto-detected if None.
-        scale_factor (float): Overall scaling factor for glyphs
+        scale_factor (float, optional): Overall scaling factor for glyphs. Auto-computed based on data bounds if None.
         scale_mode (str): "vector", "scalar", or "off" - how to scale glyphs
         max_number_of_glyphs (int): Maximum number of glyphs to display
-        
+        auto_scale (bool): Automatically compute scale factor based on data bounds if scale_factor is None (default: True)
+        scale_percentage (float): Percentage of data diagonal for auto-scaling (0.01 = 1%, 0.005 = 0.5%). Default: 0.01
+
+    Tips:
+    - If glyphs appear too large, reduce scale_factor (e.g., 0.001) or scale_percentage (e.g., 0.005)
+    - Default auto-scaling uses 1% of data diagonal. Try 0.005 (0.5%) or 0.002 (0.2%) for smaller glyphs
+
     Returns:
         Status message
     """
     success, message, glyph_filter, glyph_name = pv_manager.create_vector_visualization(
-        glyph_type, vector_field, scale_factor, scale_mode, max_number_of_glyphs
+        glyph_type, vector_field, scale_factor, scale_mode, max_number_of_glyphs, auto_scale, scale_percentage
     )
     if success:
         return f"{message}. Glyph filter registered as '{glyph_name}'."

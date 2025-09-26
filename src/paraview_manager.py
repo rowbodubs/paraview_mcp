@@ -171,8 +171,8 @@ class ParaViewManager:
                     # Use Outline representation to avoid slice mapper issues
                     display.SetRepresentationType('Outline')
                     self.logger.info("Set representation to Outline for 3D RAW data")
-            else:
-                display.ScaleFactor = 0.5
+            # else:
+                # display.ScaleFactor = 0.5
 
             view.ResetCamera()  # Allow full camera reset including clipping range
 
@@ -476,16 +476,19 @@ class ParaViewManager:
 
                 # Let ResetCamera handle the camera position based on data bounds
                 # Only set view up and ensure proper projection
-                cam = view.GetActiveCamera()
-                if cam:
-                    # Keep Z-up orientation which is common for many datasets
-                    cam.SetViewUp(0.0, 0.0, 1.0)
-                    # Use the default view angle
-                    cam.SetViewAngle(30.0)
+                # Check if view supports camera (3D render view) vs 2D plot views
+                cam = None
+                if hasattr(view, "GetActiveCamera"):
+                    cam = view.GetActiveCamera()
+                    if cam:
+                        # Keep Z-up orientation which is common for many datasets
+                        cam.SetViewUp(0.0, 0.0, 1.0)
+                        # Use the default view angle
+                        cam.SetViewAngle(30.0)
 
-                # Center of rotation should match camera focal point for intuitive rotation
-                if hasattr(view, "CenterOfRotation") and cam:
-                    view.CenterOfRotation = cam.GetFocalPoint()
+                    # Center of rotation should match camera focal point for intuitive rotation
+                    if hasattr(view, "CenterOfRotation") and cam:
+                        view.CenterOfRotation = cam.GetFocalPoint()
 
                 # Ensure perspective projection
                 if hasattr(view, "CameraParallelProjection"):
@@ -594,8 +597,22 @@ class ParaViewManager:
             # Compose the full path in the same folder as the loaded data
             full_path = os.path.join(self._data_folder, stl_filename)
 
+            # For STL export, we may need to extract surface or triangulate first
+            from paraview.simple import ExtractSurface, Triangulate
+
+            # Check if the data is already surface data
+            data_info = active_source.GetDataInformation()
+
+            # If it's volume data, extract surface first
+            if data_info.GetDataSetTypeAsString() in ['vtkUnstructuredGrid', 'vtkStructuredGrid', 'vtkImageData']:
+                surface = ExtractSurface(Input=active_source)
+                triangulated = Triangulate(Input=surface)
+            else:
+                # For polydata, just triangulate
+                triangulated = Triangulate(Input=active_source)
+
             # Save to STL
-            SaveData(full_path, proxy=active_source)
+            SaveData(full_path, proxy=triangulated)
             
             message = f"Saved active source to STL at: {full_path}"
             return True, message, full_path
@@ -1142,46 +1159,46 @@ class ParaViewManager:
             return False, f"Error coloring by field: {str(e)}"
 
     
-    def set_color_map(self, preset_name="Blue-Red"):
-        """
-        Set the color map (lookup table) for the current visualization.
+    # def set_color_map(self, preset_name="Blue-Red"):
+    #     """
+    #     Set the color map (lookup table) for the current visualization.
         
-        Args:
-            preset_name: Name of the color map preset.
-                        Available presets include (but are not limited to):
-                        - Blue-Red
-                        - Cool to Warm
-                        - Viridis
-                        - Plasma
-                        - Magma
-                        - Inferno
-                        - Rainbow
-                        - Grayscale
+    #     Args:
+    #         preset_name: Name of the color map preset.
+    #                     Available presets include (but are not limited to):
+    #                     - Blue-Red
+    #                     - Cool to Warm
+    #                     - Viridis
+    #                     - Plasma
+    #                     - Magma
+    #                     - Inferno
+    #                     - Rainbow
+    #                     - Grayscale
                         
-        Returns:
-            tuple: (success, message)
-        """
-        try:
-            from paraview.simple import GetActiveSource, GetActiveView, GetDisplayProperties, ApplyPreset
-            source = GetActiveSource()
-            if not source:
-                return False, "Error: No active source. Load data first."
+    #     Returns:
+    #         tuple: (success, message)
+    #     """
+    #     try:
+    #         from paraview.simple import GetActiveSource, GetActiveView, GetDisplayProperties, ApplyPreset
+    #         source = GetActiveSource()
+    #         if not source:
+    #             return False, "Error: No active source. Load data first."
             
-            view = GetActiveView()
-            display = GetDisplayProperties(source, view)
+    #         view = GetActiveView()
+    #         display = GetDisplayProperties(source, view)
             
-            color_tf = display.LookupTable
-            if not color_tf:
-                return False, "Error: No active color transfer function"
+    #         color_tf = display.LookupTable
+    #         if not color_tf:
+    #             return False, "Error: No active color transfer function"
             
-            # Apply the requested preset to the color transfer function.
-            ApplyPreset(color_tf, preset_name, True)
+    #         # Apply the requested preset to the color transfer function.
+    #         ApplyPreset(color_tf, preset_name, True)
             
-            available_presets = "Blue-Red, Cool to Warm, Viridis, Plasma, Magma, Inferno, Rainbow, Grayscale"
-            return True, f"Applied color map preset: {preset_name}. Available presets include: {available_presets}"
-        except Exception as e:
-            self.logger.error(f"Error setting color map: {str(e)}")
-            return False, f"Error setting color map: {str(e)}"
+    #         available_presets = "Blue-Red, Cool to Warm, Viridis, Plasma, Magma, Inferno, Rainbow, Grayscale"
+    #         return True, f"Applied color map preset: {preset_name}. Available presets include: {available_presets}"
+    #     except Exception as e:
+    #         self.logger.error(f"Error setting color map: {str(e)}")
+    #         return False, f"Error setting color map: {str(e)}"
 
     def get_histogram(self, field=None, num_bins=256, data_location="POINTS"):
         """
@@ -1732,63 +1749,152 @@ class ParaViewManager:
         Reset colormaps and transfer functions to default settings.
 
         Args:
-            array_name: Specific array name to reset. If None, resets common arrays.
+            array_name: Specific array name to reset. If None, attempts to detect and reset the currently displayed array.
 
         Returns:
             tuple: (success, message)
         """
         try:
             from paraview.simple import (
+                GetActiveSource, GetActiveView, GetDisplayProperties,
                 GetColorTransferFunction, GetOpacityTransferFunction,
-                GetActiveSource, GetActiveView, Render
+                Render
             )
 
-            arrays_reset = []
+            source = GetActiveSource()
+            if not source:
+                return False, "No active source found"
 
-            if array_name:
-                # Reset specific array
-                try:
-                    ctf = GetColorTransferFunction(array_name)
-                    if ctf:
-                        ctf.RescaleTransferFunction(0.0, 255.0)
-                        ctf.ApplyPreset('Cool to Warm', True)
-                        arrays_reset.append(array_name)
+            view = GetActiveView()
+            if not view:
+                return False, "No active view found"
 
-                    otf = GetOpacityTransferFunction(array_name)
-                    if otf:
-                        otf.Points = [0.0, 0.0, 0.5, 0.0, 255.0, 1.0, 0.5, 0.0]
-                except Exception as e:
-                    self.logger.warning(f"Could not reset colormap for {array_name}: {e}")
-            else:
-                # Reset common arrays
+            display = GetDisplayProperties(source, view)
+            if not display:
+                return False, "No display properties found"
+
+            # Get the actual array being colored if not specified
+            if not array_name:
+                if hasattr(display, 'ColorArrayName') and display.ColorArrayName:
+                    # ColorArrayName is typically ['POINTS', 'arrayname'] or ['CELLS', 'arrayname']
+                    array_name = display.ColorArrayName[1] if len(display.ColorArrayName) > 1 else None
+
+            if not array_name:
+                # Try common array names as fallback
                 common_arrays = ['ImageFile', 'MetaImage', 'Scalars_', 'RTData', 'PointData']
                 for arr in common_arrays:
                     try:
                         ctf = GetColorTransferFunction(arr)
                         if ctf:
-                            ctf.RescaleTransferFunction(0.0, 255.0)
-                            ctf.ApplyPreset('Cool to Warm', True)
-                            arrays_reset.append(arr)
-
-                        otf = GetOpacityTransferFunction(arr)
-                        if otf:
-                            otf.Points = [0.0, 0.0, 0.5, 0.0, 255.0, 1.0, 0.5, 0.0]
+                            array_name = arr
+                            break
                     except:
-                        pass
+                        continue
 
-            # Force render to show changes
-            view = GetActiveView()
-            if view:
+            if not array_name:
+                return False, "No array specified or currently being colored"
+
+            try:
+                # Get proper data range
+                data_range = None
+
+                # Try to rescale using display method first (most reliable)
+                if hasattr(display, 'RescaleTransferFunctionToDataRange'):
+                    try:
+                        display.RescaleTransferFunctionToDataRange(True)
+                        self.logger.info(f"Rescaled transfer function to data range for {array_name}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not rescale using display method: {e}")
+
+                # Get the color transfer function
+                ctf = GetColorTransferFunction(array_name)
+                if ctf:
+                    # Try to get actual data range from source
+                    try:
+                        data_info = source.GetDataInformation()
+
+                        # Check point data first
+                        point_info = data_info.GetPointDataInformation()
+                        array_info = point_info.GetArrayInformation(array_name) if point_info else None
+
+                        if not array_info:
+                            # Check cell data
+                            cell_info = data_info.GetCellDataInformation()
+                            array_info = cell_info.GetArrayInformation(array_name) if cell_info else None
+
+                        if array_info and array_info.GetNumberOfComponents() > 0:
+                            data_range = list(array_info.GetComponentRange(0))
+                            self.logger.info(f"Found data range from array info: {data_range}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not get data range from array info: {e}")
+
+                    # Fallback to current CTF range if we couldn't get actual data range
+                    if not data_range and hasattr(ctf, 'RGBPoints') and len(ctf.RGBPoints) >= 4:
+                        data_range = [ctf.RGBPoints[0], ctf.RGBPoints[-4]]
+                        self.logger.info(f"Using existing CTF range: {data_range}")
+
+                    # If still no range, use a sensible default
+                    if not data_range:
+                        data_range = [0.0, 1.0]
+                        self.logger.warning(f"Using default range [0, 1]")
+
+                    # Reset to data range
+                    ctf.RescaleTransferFunction(data_range[0], data_range[1])
+
+                    # Apply appropriate default preset
+                    preset_applied = False
+                    # Try common presets in order of preference
+                    presets = ['Rainbow Desaturated', 'Cool to Warm', 'Blue to Red Rainbow', 'Jet', 'Rainbow']
+                    for preset in presets:
+                        try:
+                            ctf.ApplyPreset(preset, True)
+                            self.logger.info(f"Applied preset: {preset}")
+                            preset_applied = True
+                            break
+                        except:
+                            continue
+
+                    if not preset_applied:
+                        self.logger.warning("Could not apply any preset, keeping current colormap")
+
+                # Reset opacity function
+                otf = GetOpacityTransferFunction(array_name)
+                if otf and data_range:
+                    # Check if volume rendering is being used
+                    is_volume = False
+                    if hasattr(display, 'Representation'):
+                        is_volume = display.Representation == 'Volume'
+
+                    if is_volume:
+                        # For volume rendering, set a more appropriate default opacity curve
+                        # Linear ramp from transparent to opaque
+                        mid_point = (data_range[0] + data_range[1]) / 2.0
+                        otf.Points = [
+                            data_range[0], 0.0, 0.5, 0.0,
+                            mid_point, 0.5, 0.5, 0.0,
+                            data_range[1], 1.0, 0.5, 0.0
+                        ]
+                        self.logger.info("Reset opacity for volume rendering")
+                    else:
+                        # For surface rendering, fully opaque
+                        otf.Points = [
+                            data_range[0], 1.0, 0.5, 0.0,
+                            data_range[1], 1.0, 0.5, 0.0
+                        ]
+                        self.logger.info("Reset opacity for surface rendering")
+
+                # Force render to show changes
                 Render(view)
 
-            if arrays_reset:
-                return True, f"Reset colormaps for: {', '.join(arrays_reset)}"
-            else:
-                return True, "No colormaps needed resetting"
+                return True, f"Successfully reset colormap for '{array_name}' with range [{data_range[0]:.3f}, {data_range[1]:.3f}]"
+
+            except Exception as e:
+                self.logger.error(f"Error resetting colormap for {array_name}: {str(e)}")
+                return False, f"Error resetting colormap for {array_name}: {str(e)}"
 
         except Exception as e:
-            self.logger.error(f"Error resetting colormaps: {str(e)}")
-            return False, f"Error resetting colormaps: {str(e)}"
+            self.logger.error(f"Error in reset_colormaps: {str(e)}")
+            return False, f"Error in reset_colormaps: {str(e)}"
 
     def reset_camera(self, padding_factor=1.0):
         """
@@ -2190,29 +2296,32 @@ class ParaViewManager:
             self.logger.error(f"Error applying transform: {str(e)}")
             return False, f"Error applying transform: {str(e)}", None, ""
 
-    def create_vector_visualization(self, glyph_type="arrow", vector_field=None, scale_factor=1.0, 
-                                   scale_mode="vector", max_number_of_glyphs=5000):
+    def create_vector_visualization(self, glyph_type="arrow", vector_field=None, scale_factor=None,
+                                   scale_mode="vector", max_number_of_glyphs=5000, auto_scale=True,
+                                   scale_percentage=0.01):
         """
         Create vector field visualizations using glyphs.
         Combines glyph functionality for arrows, cones, spheres to visualize vector data.
-        
+
         Args:
             glyph_type (str): Type of glyph - "arrow", "cone", "sphere", "line"
             vector_field (str, optional): Name of vector field. Auto-detected if None.
-            scale_factor (float): Overall scaling factor for glyphs
+            scale_factor (float, optional): Overall scaling factor for glyphs. Auto-computed if None.
             scale_mode (str): "vector", "scalar", or "off" - how to scale glyphs
             max_number_of_glyphs (int): Maximum number of glyphs to display
-            
+            auto_scale (bool): Automatically compute scale factor based on data bounds if scale_factor is None
+            scale_percentage (float): Percentage of data diagonal to use for auto-scaling (default: 0.01 = 1%)
+
         Returns:
             tuple: (success: bool, message: str, glyph_filter, glyph_name: str)
         """
         try:
             from paraview.simple import GetActiveSource, Glyph, Show, GetActiveView, SetActiveSource
-            
+
             source = GetActiveSource()
             if not source:
                 return False, "Error: No active source. Load data first.", None, ""
-            
+
             # Auto-detect vector field if not provided
             if vector_field is None:
                 data_info = source.GetDataInformation()
@@ -2222,13 +2331,27 @@ class ParaViewManager:
                     if array_info.GetNumberOfComponents() >= 3:
                         vector_field = array_info.GetName()
                         break
-                
+
                 if vector_field is None:
                     return False, "Error: No vector field found for glyph visualization.", None, ""
-            
+
+            # Auto-compute scale factor based on data bounds if not provided
+            if scale_factor is None and auto_scale:
+                data_info = source.GetDataInformation()
+                bounds = data_info.GetBounds()
+                # Compute diagonal of bounding box
+                diagonal = ((bounds[1] - bounds[0])**2 +
+                           (bounds[3] - bounds[2])**2 +
+                           (bounds[5] - bounds[4])**2)**0.5
+                # Use scale_percentage of diagonal (default 1%)
+                scale_factor = diagonal * scale_percentage
+                self.logger.info(f"Auto-computed glyph scale factor: {scale_factor} ({scale_percentage*100}% of data diagonal)")
+            elif scale_factor is None:
+                scale_factor = 1.0  # Default if auto_scale is False
+
             # Create glyph filter
             glyph_filter = Glyph(Input=source, GlyphType=glyph_type.title())
-            
+
             # Set vector field for orientation and scaling
             glyph_filter.OrientationArray = ['POINTS', vector_field]
             glyph_filter.ScaleArray = ['POINTS', vector_field] if scale_mode == "vector" else ['POINTS', '']
@@ -2282,8 +2405,8 @@ class ParaViewManager:
             tuple: (success: bool, message: str, analysis_filter, filter_name: str)
         """
         try:
-            from paraview.simple import (GetActiveSource, GradientOfUnstructuredDataSet, 
-                                       ConnectivityFilter, Show, GetActiveView, SetActiveSource)
+            from paraview.simple import (GetActiveSource, Gradient,
+                                       Connectivity, Show, GetActiveView, SetActiveSource)
             
             source = GetActiveSource()
             if not source:
@@ -2310,8 +2433,8 @@ class ParaViewManager:
             # Apply gradient analysis
             if analysis_type.lower() in ["gradient", "combined"]:
                 if field_name:
-                    gradient_filter = GradientOfUnstructuredDataSet(Input=source)
-                    gradient_filter.SelectInputScalars = ['POINTS', field_name]
+                    gradient_filter = Gradient(Input=source)
+                    gradient_filter.ScalarArray = ['POINTS', field_name]
                     
                     # Configure gradient computation options
                     if compute_vorticity:
@@ -2336,7 +2459,7 @@ class ParaViewManager:
             if analysis_type.lower() in ["connectivity", "combined"]:
                 # Use current active source (might be gradient result)
                 current_source = GetActiveSource()
-                connectivity_filter = ConnectivityFilter(Input=current_source)
+                connectivity_filter = Connectivity(Input=current_source)
                 
                 Show(connectivity_filter)
                 filter_objects.append(connectivity_filter)

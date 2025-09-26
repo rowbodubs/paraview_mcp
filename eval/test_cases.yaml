@@ -26,18 +26,60 @@
 #     runSerially: true
 
 # Test 2: Delaunay triangulation 
+# - vars:
+#     question: |
+#       First clear the ParaView pipeline to ensure a clean state. Then load the "eval/eval_examples/triangulation/can.ex2" file in 
+#       ParaView. Generate an 3d Delaunay triangulation of the dataset. If that operation can not be done state the mcp do not have such functionality.
+#   assert:
+#     - type: contains-all
+#       value: 
+#         - "can.ex2"
+#     - type: llm-rubric
+#       value: |
+#         1. Successfully loaded the can.ex2 file
+#         2. Created 3d  Delaunay triangulation mesh of the data
+#   options:
+#     cache: false
+#     runSerially: true
+
+# temp test
+# - vars:
+#     question: |
+#       Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/engine/data/engine_256x256x128_uint8.raw".
+#       Use different visualization techniques to determine how many cylinders this engine block has (cylinder should always be round and equal in size)? IMPORTANT: the answer can only derive from visualization.
+#   assert:
+#     - type: llm-rubric
+#       value: |
+#         The correct answer is 2 cylinders/piston    
+
+
+# - vars:
+#     question: |
+#       Ensure ParaView starts in a clean state by clearing the pipeline and resetting everything.
+#   assert:
+#     - type: contains
+#       value: "clear_pipeline_and_reset"
+#   options:
+#     cache: false
+#     runSerially: true        
+
+
+
+# Test 12: create_vector_visualization - Visualize vectors with arrows
 - vars:
     question: |
-      First clear the ParaView pipeline to ensure a clean state. Then load the "eval/eval_examples/triangulation/can.ex2" file in 
-      ParaView. Generate an 3d Delaunay triangulation of the dataset. If that operation can not be done state the mcp do not have such functionality.
+      Clean up ParaView and load the file "eval/eval_examples/stream_line/disk.ex2".
+      Set the active source to the loaded data, then create arrow glyphs to visualize the "V" vector field.
   assert:
-    - type: contains-all
-      value: 
-        - "can.ex2"
     - type: llm-rubric
       value: |
-        1. Successfully loaded the can.ex2 file
-        2. Created 3d  Delaunay triangulation mesh of the data
+        Check if the response indicates that:
+        1. clear_pipeline_and_reset or similar cleanup was performed
+        2. load_data was called with the correct file
+        3. set_active_source was called appropriately
+        4. create_vector_visualization was called with "V" vector field
+        5. The vector visualization was successfully created
+        Pass if all operations completed successfully.
   options:
     cache: false
     runSerially: true
