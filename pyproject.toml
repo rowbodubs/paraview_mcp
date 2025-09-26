@@ -4,16 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paraview-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP (Model Context Protocol) server for ParaView visualization control"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Shusen Liu", email = "liu42@llnl.gov"},
+	{name = "Haichao Miao", email = "miao1@llnl.gov"}
 ]
 maintainers = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Shusen Liu", email = "liu42@llnl.gov"},
+	{name = "Haichao Miao", email = "miao1@llnl.gov"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -54,10 +56,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/paraview-mcp"
+Homepage = "https://github.com/LLNL/paraview_mcp"
 Documentation = "https://paraview-mcp.readthedocs.io"
-Repository = "https://github.com/yourusername/paraview-mcp"
-Issues = "https://github.com/yourusername/paraview-mcp/issues"
+Repository = "https://github.com/LLNL/paraview_mcp"
+Issues = "https://github.com/LLNL/paraview_mcp/issues"
 
 [project.scripts]
 paraview-mcp-server = "paraview_mcp.paraview_mcp_server:main"

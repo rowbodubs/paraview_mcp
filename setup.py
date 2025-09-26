@@ -20,12 +20,12 @@ version = "0.1.0"
 setup(
     name="paraview-mcp",
     version=version,
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Shusen Liu and Haichao Miao",
+    author_email="liu42@llnl.gov and miao1@llnl.gov",
     description="MCP (Model Context Protocol) server for ParaView visualization control",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/paraview-mcp",
+    url="https://github.com/LLNL/paraview_mcp",
     packages=["paraview_mcp"],
     package_dir={"paraview_mcp": "src"},
     classifiers=[
