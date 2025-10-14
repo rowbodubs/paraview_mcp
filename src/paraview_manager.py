@@ -158,9 +158,15 @@ class ParaViewManager:
             
             if not reader:
                 return False, f"Failed to load data from {file_path}", None, ""
-            
+
             # Show in the active view
             view = GetActiveView()
+            if not view:
+                # Create a render view if none exists
+                from paraview.simple import CreateRenderView
+                view = CreateRenderView()
+                self.logger.info("Created new render view")
+
             display = Show(reader, view)
 
             # For RAW files, check if it's 3D and set appropriate representation
@@ -2316,7 +2322,8 @@ class ParaViewManager:
             tuple: (success: bool, message: str, glyph_filter, glyph_name: str)
         """
         try:
-            from paraview.simple import GetActiveSource, Glyph, Show, GetActiveView, SetActiveSource
+            from paraview.simple import (GetActiveSource, Glyph, Show, GetActiveView,
+                                        SetActiveSource, Arrow, Cone, Sphere, Line)
 
             source = GetActiveSource()
             if not source:
@@ -2328,12 +2335,14 @@ class ParaViewManager:
                 point_info = data_info.GetPointDataInformation()
                 for i in range(point_info.GetNumberOfArrays()):
                     array_info = point_info.GetArrayInformation(i)
-                    if array_info.GetNumberOfComponents() >= 3:
+                    # Only use arrays with exactly 3 components (vectors)
+                    # Skip gradient tensors (9 components) and other multi-component arrays
+                    if array_info.GetNumberOfComponents() == 3:
                         vector_field = array_info.GetName()
                         break
 
                 if vector_field is None:
-                    return False, "Error: No vector field found for glyph visualization.", None, ""
+                    return False, "Error: No 3-component vector field found for glyph visualization.", None, ""
 
             # Auto-compute scale factor based on data bounds if not provided
             if scale_factor is None and auto_scale:
@@ -2349,8 +2358,19 @@ class ParaViewManager:
             elif scale_factor is None:
                 scale_factor = 1.0  # Default if auto_scale is False
 
-            # Create glyph filter
-            glyph_filter = Glyph(Input=source, GlyphType=glyph_type.title())
+            # Map glyph type string to proper glyph source
+            glyph_type_map = {
+                "arrow": "Arrow",
+                "cone": "Cone",
+                "sphere": "Sphere",
+                "line": "Line"
+            }
+
+            glyph_type_name = glyph_type_map.get(glyph_type.lower(), "Arrow")
+
+            # Create glyph filter with proper GlyphType
+            glyph_filter = Glyph(Input=source)
+            glyph_filter.GlyphType = glyph_type_name
 
             # Set vector field for orientation and scaling
             glyph_filter.OrientationArray = ['POINTS', vector_field]
@@ -2373,11 +2393,15 @@ class ParaViewManager:
                 glyph_filter.ScaleArray = ['POINTS', '']
                 glyph_filter.ScaleFactor = scale_factor
             
+            # Update pipeline before showing (ensures VTK objects are initialized)
+            from paraview.simple import UpdatePipeline
+            UpdatePipeline(proxy=glyph_filter)
+
             # Show the result
             view = GetActiveView()
             Show(glyph_filter, view)
             SetActiveSource(glyph_filter)
-            
+
             # Get glyph name
             glyph_name = self._get_source_name(glyph_filter)
             
@@ -2433,9 +2457,10 @@ class ParaViewManager:
             # Apply gradient analysis
             if analysis_type.lower() in ["gradient", "combined"]:
                 if field_name:
+                    from paraview.simple import UpdatePipeline
                     gradient_filter = Gradient(Input=source)
                     gradient_filter.ScalarArray = ['POINTS', field_name]
-                    
+
                     # Configure gradient computation options
                     if compute_vorticity:
                         gradient_filter.ComputeVorticity = True
@@ -2443,12 +2468,15 @@ class ParaViewManager:
                         gradient_filter.ComputeDivergence = True
                     if compute_qcriterion:
                         gradient_filter.ComputeQCriterion = True
-                    
+
+                    # Update pipeline to ensure VTK objects are initialized
+                    UpdatePipeline(proxy=gradient_filter)
+
                     Show(gradient_filter)
                     filter_objects.append(gradient_filter)
                     grad_name = self._get_source_name(gradient_filter)
                     results.append(f"gradient analysis of '{field_name}' -> {grad_name}")
-                    
+
                     # Set as active for further processing
                     SetActiveSource(gradient_filter)
                     primary_filter = gradient_filter
