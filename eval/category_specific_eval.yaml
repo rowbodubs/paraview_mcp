@@ -197,16 +197,204 @@
       Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/carp/data/carp_256x256x512_uint16.raw".
       1. Enable volume rendering to show internal fish anatomy
       2. Adjust transfer functions to reveal skeletal structure and organs
-      3. Create a sagittal slice through the fish body
-      4. Use color mapping that differentiates tissue types
-      5. Reset camera with appropriate padding to frame the entire fish
+      3. Reset camera with appropriate padding to frame the entire fish
   assert:
     - type: llm-rubric
       value: |
         The assistant should:
         - The volume rendering show both skeleton and organs
-        - Create sagittal slice along fish body length
-        - Verify sagittal slice shows internal structure along body axis
+        - The final frame work show the entire fish with margin
 
 
-        
+# ==============================================================================
+# ENGINEERING & MECHANICAL CATEGORY
+# ==============================================================================
+
+# Generic Engineering Test
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/engine/data/engine_256x256x128_uint8.raw".
+      1. Create an isosurface to reveal the solid structure
+      2. Apply metallic gray coloring
+      3. Create a clip plane to show internal details
+      4. Save the isosurface as "component.stl"
+      5. Report: How many cylinder this engine has?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Create isosurface of the component
+        - Apply gray/metallic coloring
+        - Use clip plane to reveal internals
+        - Successfully save STL file
+        - The correct answer is 2 cylinders
+
+# ==============================================================================
+# FLOW & FLUID DYNAMICS CATEGORY
+# ==============================================================================
+
+# Generic Flow Test - Applied to: tacc_turbulence, tornado, duct, shockwave
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/tacc_turbulence/data/tacc_turbulence_256x256x256_float32.raw".
+      1. Create an isosurface to reveal flow structures
+      2. Create three orthogonal slice planes through the center
+      3. Apply a "Cool to Warm" or similar diverging color map
+      4. Take screenshots from two different angles
+      5. Report: Are there more than 5 distinct vortex/swirl structures visible?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Create isosurface showing flow structures
+        - Create three orthogonal slices
+        - Apply diverging color map
+        - Take at least 2 screenshots
+        - Answer yes/no to whether more than 5 vortices are visible
+
+# ==============================================================================
+# COMBUSTION & REACTION CATEGORY
+# ==============================================================================
+
+# Generic Combustion Test - Applied to: csafe_heptane, fuel
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/csafe_heptane/data/csafe_heptane_302x302x302_uint8.raw".
+      1. Create volume rendering to visualize the reaction/mixing zone
+      2. Create isosurfaces at 3 different threshold values (low, medium, high)
+      3. Apply temperature-appropriate coloring (blue for cold, red for hot)
+      4. Report: Do the high-value regions form a connected structure or separate islands?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Enable volume rendering
+        - Create 3 isosurfaces at different values
+        - Apply blue-to-red temperature coloring
+        - Answer whether high-value regions are connected or separated
+
+# ==============================================================================
+# MOLECULAR & ATOMIC CATEGORY  
+# ==============================================================================
+
+# Generic Molecular Test - Applied to: hydrogen_atom, nucleon, neghip, silicium
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/hydrogen_atom/data/hydrogen_atom_128x128x128_uint8.raw".
+      1. Create volume rendering to show the probability/density distribution
+      2. Create isosurfaces at 20%, 50%, and 80% of the maximum value
+      3. Take screenshots showing all three isosurfaces together
+      4. Report: Is the structure spherically symmetric (yes) or does it have directional lobes (no)?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Create volume rendering
+        - Create 3 isosurfaces at percentage-based thresholds
+        - Show nested isosurfaces in screenshot
+        - Answer yes (spherical) or no (has lobes/directionality)
+
+# ==============================================================================
+# ASTROPHYSICAL PHENOMENA CATEGORY
+# ==============================================================================
+
+# Generic Astrophysics Test - Applied to: supernova, tornado (when vector data)
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/supernova/data/supernova_256x256x256_float32.raw".
+      1. Create volume rendering to show the explosion/phenomenon
+      2. Create orthogonal slices through the center
+      3. Apply a high-energy color map (e.g., "Black-Body Radiation" or "Hot")
+      4. Take screenshots from at least two angles
+      5. Report: Is the structure predominantly spherical (yes) or does it show clear asymmetry/jets (no)?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Enable volume rendering for the phenomenon
+        - Create orthogonal slices
+        - Apply appropriate high-energy coloring
+        - Answer yes (spherical) or no (asymmetric/jets)
+
+# ==============================================================================
+# SCANNED OBJECTS CATEGORY
+# ==============================================================================
+
+# Generic Scanned Object Test - Applied to: bunny, boston_teapot, statue_leg, bonsai
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/bunny/data/bunny_512x512x361_uint16.raw".
+      1. Create an isosurface at an appropriate threshold for surface extraction
+      2. Apply a single color of your choice
+      3. Take screenshots from front, side, and top views
+      4. Report: Does the object have protruding appendages/features extending from a main body (yes/no)?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Extract clean surface with isosurface
+        - Apply consistent coloring
+        - Take 3 orthogonal screenshots
+        - Answer yes (bunny has ears) about protruding features
+
+# ==============================================================================
+# MARINE BIOLOGY CATEGORY
+# ==============================================================================
+
+# Generic Marine Life Test - Applied to: lobster, carp, frog
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/lobster/data/lobster_301x324x56_uint8.raw".
+      1. Create visualization to show the specimen (isosurface or volume rendering)
+      2. Note the thin z-dimension (56) compared to x,y (301x324)
+      3. Apply appropriate coloring for the specimen
+      4. Report: Is there a clear bilateral symmetry visible in the specimen (yes/no)?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Choose appropriate visualization method
+        - Note the anisotropic dimensions
+        - Apply suitable coloring
+        - Answer yes/no about bilateral symmetry
+
+# ==============================================================================
+# SYNTHETIC TEST PATTERNS CATEGORY
+# ==============================================================================
+
+# Generic Synthetic Pattern Test - Applied to: marschner_lobb
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/marschner_lobb/data/marschner_lobb_41x41x41_uint8.raw".
+      1. Create volume rendering
+      2. Create multiple isosurfaces at regular intervals
+      3. Report: Does the pattern show concentric/nested structures (yes) or random distribution (no)?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Create volume rendering of test pattern
+        - Create multiple evenly-spaced isosurfaces
+        - Identify the mathematical/regular nature
+        - Answer yes about concentric structures
+
+# ==============================================================================
+# NEUROSCIENCE & BIOLOGY CATEGORY  
+# ==============================================================================
+
+# Generic Neural/Biological Test - Applied to: neocortical_layer_1_axons, mri_ventricles
+- vars:
+    question: |
+      Clear the ParaView pipeline and load the data file "../SciVisAgentBench-tasks/neocortical_layer_1_axons/data/neocortical_layer_1_axons_1464x1033x76_uint8.raw".
+      1. Note the very thin z-dimension (76) vs x,y (1464x1033) - this is a tissue slice
+      2. Create appropriate visualization for this thin slab
+      3. Adjust contrast/opacity to reveal structures
+      4. Report: Are there branching/network patterns visible (yes) or uniform distribution (no)?
+  assert:
+    - type: llm-rubric
+      value: |
+        The assistant should:
+        - Recognize thin slab geometry
+        - Choose appropriate visualization for 2.5D data
+        - Enhance contrast appropriately
+        - Answer yes about branching/network patterns

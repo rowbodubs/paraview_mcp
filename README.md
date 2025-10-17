@@ -124,8 +124,6 @@ promptfoo eval --no-cache -c eval/eval_claude.yaml --verbose
 # Run simple action tests
 promptfoo eval --no-cache -c eval/eval_claude.yaml -t eval/simple_action_eval.yaml --verbose
 
-# Run basic feature validation
-promptfoo eval --no-cache -c eval/eval_claude.yaml -t eval/basic_features_validation.yaml --verbose
 ```
 
 The `--no-cache` flag ensures fresh test runs, and `--verbose` provides detailed debugging output.
