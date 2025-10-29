@@ -68,7 +68,7 @@ pv_manager = ParaViewManager(
 )
 
 # Initialize FastMCP server for Claude Desktop integration with default prompt
-mcp = FastMCP("ParaView", system_prompt=default_prompt)
+mcp = FastMCP("ParaView", instructions=default_prompt)
 
 # ============================================================================
 # MCP Tools for ParaView
