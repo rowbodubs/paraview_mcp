@@ -1,0 +1,22 @@
+name: paraview_mcp
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Python version
+  - python=3.10
+  
+  # ParaView and visualization dependencies
+  - paraview
+  
+  # MCP server framework
+  - fastmcp
+  
+  # Core Python dependencies
+  - pip
+  
+  # Install Python packages via pip (not available in conda-forge)
+  - pip:
+    - mcp[cli]>=0.1.0
+    - httpx
+    - Pillow>=9.0.0

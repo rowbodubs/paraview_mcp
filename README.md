@@ -11,14 +11,23 @@ Click the image below to watch the video:
 
 ## Installation
 
+### Option 1: Conda Environment (Recommended)
+
+The easiest way to install ParaView-MCP is using the provided conda environment file:
+
 ```shell
+# Clone the repository
 git clone https://github.com/LLNL/paraview_mcp.git
 cd paraview_mcp
 
-conda create -n paraview_mcp python=3.10
-conda install conda-forge::paraview
-conda install mcp[cli] httpx
+# Create and activate the conda environment
+conda env create -f environment.yml
+conda activate paraview_mcp
+
+# Install the package in development mode
+pip install -e .
 ```
+
 
 ## Setup for LLM
 
