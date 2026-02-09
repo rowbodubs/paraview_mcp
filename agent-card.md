@@ -429,4 +429,4 @@ Evaluation criteria:
 
 - **Video Demo**: https://youtu.be/GvcBnAcIXp4
 - **GitHub Repository**: https://github.com/LLNL/paraview_mcp
-- **Documentation**: https://paraview-mcp.readthedocs.io
+- **Documentation**: https://github.com/LLNL/paraview_mcp
