@@ -109,7 +109,6 @@ ParaView-MCP is an autonomous agent that integrates multimodal large language mo
 
 - **Shusen Liu** (liu42@llnl.gov) - Lawrence Livermore National Laboratory
 - **Haichao Miao** (miao1@llnl.gov) - Lawrence Livermore National Laboratory
-- **Peer-Timo Bremer** - Lawrence Livermore National Laboratory
 
 ## Contributed by
 
