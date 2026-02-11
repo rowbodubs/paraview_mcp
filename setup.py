@@ -14,8 +14,8 @@ def read_requirements(filename):
     with open(filename, "r") as f:
         return [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
-# Get version from package
-version = "0.1.0"
+# Get version from package (should match pyproject.toml)
+version = "0.1.1"
 
 setup(
     name="paraview-mcp",
@@ -41,7 +41,8 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "mcp>=0.1.0",
+        "mcp>=1.10.0,<2.0.0",  # Pin to compatible version range
+        "httpx>=0.24.0",
         "Pillow>=9.0.0",
         # Note: ParaView Python bindings are typically installed separately
         # as they require the full ParaView installation

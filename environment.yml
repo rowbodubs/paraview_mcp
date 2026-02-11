@@ -17,6 +17,6 @@ dependencies:
   
   # Install Python packages via pip (not available in conda-forge)
   - pip:
-    - mcp[cli]>=0.1.0
-    - httpx
+    - mcp[cli]>=1.10.0,<2.0.0  # Pin to compatible version range (tested with 1.10.1)
+    - httpx>=0.24.0
     - Pillow>=9.0.0

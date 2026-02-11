@@ -30,7 +30,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "mcp>=0.1.0",
+    "mcp>=1.10.0,<2.0.0",  # Pin to compatible version range (tested with 1.10.1)
+    "httpx>=0.24.0",
     "Pillow>=9.0.0",
 ]
 
