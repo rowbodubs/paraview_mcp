@@ -1,12 +1,13 @@
 # Paraview_MCP
 
 ParaView-MCP is an autonomous agent that integrates multimodal large language models with ParaView through the Model Context Protocol, enabling users to create and manipulate scientific visualizations using natural language and visual inputs instead of complex commands or GUI operations. The system features visual feedback capabilities that allow it to observe the viewport and iteratively refine visualizations, making advanced visualization accessible to non-experts while augmenting expert workflows with intelligent automation.
-
+https://youtu.be/1at-YkGVWGU
 ## Video Demo
 
 Click the image below to watch the video:
 
-[![Video Title](https://img.youtube.com/vi/GvcBnAcIXp4/maxresdefault.jpg)](https://youtu.be/GvcBnAcIXp4)
+[![Video Title](https://img.youtube.com/vi/1at-YkGVWGU/maxresdefault.jpg)](https://youtu.be/1at-YkGVWGU)
+
 
 ## Docker and Claude Code
 
@@ -15,6 +16,10 @@ Click the image below to watch the video:
 If at NIST: Get Claude Code working using RChat with the following steps: https://gitlab.nist.gov/gitlab/isg-ai/nist-chat/-/wikis/Getting-Started-with-Claude-Code-and-RChat
 
 Otherwise use Claude Code with whatever model you want. Discuss with your organization if you would like to connect your own local LLM.
+
+### Optional VSCode Interface
+
+You can use Paraview_MCP with Claude Code from the command line but if you want a nice GUI you can use VSCode
 
 Install VS Code.
 Get the Claude Code for VS Code extension.
@@ -29,7 +34,6 @@ Other versions may work, I have not tested it.
 
 ```shell
 git clone https://github.com/rowbodubs/paraview_mcp.git --branch dev
-cd paraview_mcp
 ```
 
 ### Docker
@@ -49,6 +53,8 @@ docker run -i paraview_mcp
 
 Make sure that it connects to the pvserver and doesn't crash
 
+Add the new MCP tool to Claude Code
+
 ```shell
 claude mcp add paraview_mcp -- docker run -i --rm paraview_mcp
 ```
@@ -56,16 +62,25 @@ claude mcp add paraview_mcp -- docker run -i --rm paraview_mcp
 
 ## Running
 
-### 1. Start paraview server
+### 1. Make sure Docker Desktop is open
+
+### 2. Start paraview server
 
 In the directory where you installed Paraview:
 ```shell
 bin\pvserver --multi-clients
 ```
 
-### 2. Connect to paraview server from paraview GUI (file -> connect)
+### 3. Connect to paraview server from paraview GUI (file -> connect)
 
-### 3. Start VSCode and create a new Claude Code session
+### 4. Start VSCode and create a new Claude Code session
+
+
+## Video Demo
+
+Click the image below to watch the video:
+
+[![Video Title](https://img.youtube.com/vi/GvcBnAcIXp4/maxresdefault.jpg)](https://youtu.be/GvcBnAcIXp4)
 
 
 ## Installation
