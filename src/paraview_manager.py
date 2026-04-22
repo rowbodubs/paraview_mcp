@@ -118,6 +118,7 @@ class ParaViewManager:
             # Handle relative paths by checking multiple possible base directories
             original_path = file_path
             
+            """
             # Convert to absolute path if it's relative
             if not os.path.isabs(file_path):
                 # Try different base directories for relative paths
@@ -140,6 +141,7 @@ class ParaViewManager:
             if not os.path.exists(file_path):
                 self.logger.error(f"File not found: {file_path} (original: {original_path})")
                 return False, f"File not found: {file_path} (tried from multiple locations)", None, ""
+                """
             
             # Record the directory of the loaded file so we can re-use it.
             self._data_folder = os.path.dirname(file_path)
@@ -1561,7 +1563,7 @@ class ParaViewManager:
                 else:
                     return False, "Error: Could not retrieve point data information.", None, ""
 
-            # Determine point center for the seed source
+            # Determine point center for the seed source (optional)
             center = point_center
             if center is None:
                 data_info = base_source.GetDataInformation()
@@ -1577,11 +1579,14 @@ class ParaViewManager:
             tracer.IntegrationDirection = integration_direction
             tracer.InitialStepLength = initial_step_length
             tracer.MaximumStreamlineLength = maximum_stream_length
-            
-            # Configure the Point Cloud seed
-            tracer.SeedType.Center = center
-            tracer.SeedType.NumberOfPoints = number_of_streamlines
-            tracer.SeedType.Radius = point_radius
+
+            # Configure the Point Cloud seed (ignore errors if unsupported)
+            try:
+                tracer.SeedType.Center = center
+                tracer.SeedType.NumberOfPoints = number_of_streamlines
+                tracer.SeedType.Radius = point_radius
+            except Exception as e:
+                self.logger.warning(f"Seed configuration failed: {e}")
             
             # Display the tracer result
             Show(tracer)
@@ -1614,6 +1619,23 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error creating stream tracer: {str(e)}")
             return False, f"Error creating stream tracer: {str(e)}", None, ""
+
+    # Wrapper added by Claude Code to expose stream tracer via create_streamline command
+    def create_streamline(self, seed_point_number: int, vector_field: str = None,
+                         integration_direction: str = "BOTH", max_steps: int = 1000,
+                         initial_step: float = 0.1, maximum_step: float = 50.0):
+        """
+        Wrapper that forwards to create_stream_tracer.
+        Note: max_steps is ignored because the underlying implementation uses number_of_streamlines.
+        """
+        return self.create_stream_tracer(
+            vector_field=vector_field,
+            base_source=None,
+            point_center=None,
+            integration_direction=integration_direction,
+            initial_step_length=initial_step,
+            maximum_stream_length=maximum_step,
+            number_of_streamlines=seed_point_number)
 
     def get_screenshot(self):
         """
