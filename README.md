@@ -8,6 +8,65 @@ Click the image below to watch the video:
 
 [![Video Title](https://img.youtube.com/vi/GvcBnAcIXp4/maxresdefault.jpg)](https://youtu.be/GvcBnAcIXp4)
 
+## Docker and Claude Code
+
+### Install Claude Code
+
+If at NIST: Get Claude Code working using RChat with the following steps: https://gitlab.nist.gov/gitlab/isg-ai/nist-chat/-/wikis/Getting-Started-with-Claude-Code-and-RChat
+
+Otherwise use Claude Code with whatever model you want. Discuss with your organization if you would like to connect your own local LLM.
+
+Install VS Code.
+Get the Claude Code for VS Code extension.
+
+### Install Paraview
+
+Install version 5.13.3-Windows-Python3.10-msvc2017-AMD64 from https://www.paraview.org/download/
+
+Other versions may work, I have not tested it.
+
+### Install Paraview_MCP
+
+```shell
+git clone https://github.com/rowbodubs/paraview_mcp.git --branch dev
+cd paraview_mcp
+```
+
+### Docker
+
+Install Docker Desktop and open it.
+
+In the directory where you installed Paraview:
+```shell
+bin\pvserver --multi-clients
+```
+
+In the paraview_mcp directory:
+```shell
+docker build -t paraview_mcp .
+docker run -i paraview_mcp
+```
+
+Make sure that it connects to the pvserver and doesn't crash
+
+```shell
+claude mcp add paraview_mcp -- docker run -i --rm paraview_mcp
+```
+
+
+## Running
+
+### 1. Start paraview server
+
+In the directory where you installed Paraview:
+```shell
+bin\pvserver --multi-clients
+```
+
+### 2. Connect to paraview server from paraview GUI (file -> connect)
+
+### 3. Start VSCode and create a new Claude Code session
+
 
 ## Installation
 
