@@ -141,10 +141,11 @@ class ParaViewManager:
             if not os.path.exists(file_path):
                 self.logger.error(f"File not found: {file_path} (original: {original_path})")
                 return False, f"File not found: {file_path} (tried from multiple locations)", None, ""
-                """
+                
             
             # Record the directory of the loaded file so we can re-use it.
             self._data_folder = os.path.dirname(file_path)
+            """
 
             # Get file extension
             _, file_extension = os.path.splitext(file_path)
@@ -182,6 +183,7 @@ class ParaViewManager:
             # else:
                 # display.ScaleFactor = 0.5
 
+            """ Cameras are the devil
             view.ResetCamera()  # Allow full camera reset including clipping range
 
             # Add some padding by zooming out slightly for better framing
@@ -190,7 +192,8 @@ class ParaViewManager:
                 cam.Dolly(0.7)  # Zoom out by 30% for better initial view
                 from paraview.simple import Render
                 Render()  # Update the view after camera adjustment
-
+            """
+            
             # Save the loaded reader as the original data source
             self.original_source = reader
             
@@ -198,9 +201,104 @@ class ParaViewManager:
             source_name = self._get_source_name(reader)
             
             return True, f"Successfully loaded data from {file_path}", reader, source_name
+            
         except Exception as e:
             self.logger.error(f"Error loading data: {str(e)} file path{file_path}")
             return False, f"Error loading data: {str(e)} file path{file_path}", None, ""
+            
+    def load_state(self, file_path):
+        LoadState(file_path)
+        RenderAllViews()
+        return True, f"Successfully loaded state from {file_path}"
+        '''
+        """
+        Load data from a state file into ParaView
+        
+        Args:
+            file_path: Path to the state file (can be relative or absolute)
+            
+        Returns:
+            tuple: (success, message, reader, source_name)
+        """
+        try:
+            import os
+            from paraview.simple import LoadState, Show, GetActiveView
+
+            # Handle relative paths by checking multiple possible base directories
+            original_path = file_path
+            
+            """
+            # Convert to absolute path if it's relative
+            if not os.path.isabs(file_path):
+                # Try different base directories for relative paths
+                possible_bases = [
+                    os.getcwd(),  # Current working directory
+                    os.path.dirname(os.path.dirname(__file__)),  # Project root (parent of src/)
+                    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'eval')  # eval directory
+                ]
+                
+                for base_dir in possible_bases:
+                    test_path = os.path.join(base_dir, file_path)
+                    if os.path.exists(test_path):
+                        file_path = test_path
+                        break
+                else:
+                    # If still not found, use absolute path of original
+                    file_path = os.path.abspath(original_path)
+            
+            # Final check if file exists
+            if not os.path.exists(file_path):
+                self.logger.error(f"File not found: {file_path} (original: {original_path})")
+                return False, f"File not found: {file_path} (tried from multiple locations)", None, ""
+                
+            
+            # Record the directory of the loaded file so we can re-use it.
+            self._data_folder = os.path.dirname(file_path)
+            """
+
+            # Get file extension
+            _, file_extension = os.path.splitext(file_path)
+            file_extension = file_extension.lower()
+            file_name = os.path.basename(file_path)
+
+            # Special handling for .py files
+            if file_extension == '.py':
+                return False, "Loading .py files not implemented. Try converting it to a .pvsm"
+            else:
+                # Standard loading for other file types
+                LoadState(file_path)
+
+            # Show in the active view
+            view = GetActiveView()
+            if not view:
+                # Create a render view if none exists
+                from paraview.simple import CreateRenderView
+                view = CreateRenderView()
+                self.logger.info("Created new render view")
+
+            try:
+                if view:
+                    Render(view)
+            except Exception as err:
+                self.logger.warning(f"Render failed after loading state: {err}")
+
+            """ Cameras are the devil
+            view.ResetCamera()  # Allow full camera reset including clipping range
+
+            # Add some padding by zooming out slightly for better framing
+            cam = view.GetActiveCamera()
+            if cam:
+                cam.Dolly(0.7)  # Zoom out by 30% for better initial view
+                from paraview.simple import Render
+                Render()  # Update the view after camera adjustment
+            """
+            
+            return True, f"Successfully loaded state from {file_path}"
+            
+        except Exception as e:
+            self.logger.error(f"Error loading state: {str(e)} file path{file_path}")
+            return False, f"Error loading state: {str(e)} file path{file_path}", None, ""
+    '''
 
     
     def _configure_raw_reader(self, file_path, file_name, dimensions=None, data_type=None,
@@ -376,7 +474,7 @@ class ParaViewManager:
                     # Use Outline representation to avoid slice mapper issues
                     display.SetRepresentationType('Outline')
                     self.logger.info("Set representation to Outline for 3D data")
-
+            '''cameras are the devil
             view.ResetCamera()  # Allow full camera reset including clipping range
 
             # Add some padding by zooming out slightly for better framing
@@ -385,7 +483,7 @@ class ParaViewManager:
                 cam.Dolly(0.7)  # Zoom out by 30% for better initial view
                 from paraview.simple import Render
                 Render()  # Update the view after camera adjustment
-
+            '''
             # Save as original source
             self.original_source = reader
 
@@ -400,7 +498,46 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error loading RAW data: {str(e)}")
             return False, f"Error loading RAW data: {str(e)}", None, ""
-
+    
+    def delete_source(self, name):
+        """
+            Delete a source from the pipeline by its registered name.
+        
+        Args:
+            name (str): The registered name of the source to delete
+            
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        try:
+            from paraview.simple import GetSources, Delete
+            
+            sources_dict = GetSources()
+            if not sources_dict:
+                return False, "No sources available in the pipeline."
+            
+            # Find the source with the matching name
+            proxy_to_delete = None
+            source_key = None
+            for (key, proxy) in sources_dict.items():
+                # key is typically (registeredName, fileNameOrOtherString)
+                if key[0] == name:
+                    proxy_to_delete = proxy
+                    source_key = key
+                    break
+            
+            if proxy_to_delete is None:
+                return False, f"No source found with the name '{name}'."
+            
+            # Delete the source
+            Delete(proxy_to_delete)
+            
+            return True, f"Successfully deleted source '{name}'."
+            
+        except Exception as e:
+            self.logger.error(f"Error deleting source: {str(e)}")
+            return False, f"Error deleting source: {str(e)}"
+    
     def clear_pipeline_and_reset(self):
         """
         Completely clear the ParaView pipeline and return the GUI to a clean,
@@ -467,14 +604,14 @@ class ParaViewManager:
                         otf.Points = [0.0, 0.0, 0.5, 0.0, 255.0, 1.0, 0.5, 0.0]  # Default linear
                 except:
                     pass  # Ignore if the array doesn't exist
-
+            '''
             # --------------------------------------------------------
             # 4.  Reset the active view & camera
             # --------------------------------------------------------
             view = GetActiveView()
             if view:
                 # One call handles both camera framing *and* clipping range
-                ResetCamera(view)
+                #ResetCamera(view)
 
                 # Set a neutral dark-grey background (solid, no gradient)
                 if hasattr(view, "Background"):
@@ -485,6 +622,7 @@ class ParaViewManager:
                 # Let ResetCamera handle the camera position based on data bounds
                 # Only set view up and ensure proper projection
                 # Check if view supports camera (3D render view) vs 2D plot views
+                
                 cam = None
                 if hasattr(view, "GetActiveCamera"):
                     cam = view.GetActiveCamera()
@@ -497,11 +635,11 @@ class ParaViewManager:
                     # Center of rotation should match camera focal point for intuitive rotation
                     if hasattr(view, "CenterOfRotation") and cam:
                         view.CenterOfRotation = cam.GetFocalPoint()
-
+                
                 # Ensure perspective projection
                 if hasattr(view, "CameraParallelProjection"):
                     view.CameraParallelProjection = 0
-
+                
                 # Reset any view-specific settings
                 # For ParaView 5.10+, use BackgroundColorMode instead of UseGradientBackground
                 if hasattr(view, "BackgroundColorMode"):
@@ -512,7 +650,7 @@ class ParaViewManager:
 
                 if hasattr(view, "OrientationAxesVisibility"):
                     view.OrientationAxesVisibility = 1  # Show orientation axes
-
+            '''
             # --------------------------------------------------------
             # 5.  Force a redraw so the GUI updates immediately
             # --------------------------------------------------------
@@ -771,7 +909,7 @@ class ParaViewManager:
             )
 
             # Use the originally loaded source if available; fall back to the active source.
-            base_source = self.original_source or GetActiveSource()
+            base_source = GetActiveSource() or self.original_source
             if not base_source:
                 return False, "Error: No active source. Load data first.", None, ""
 
@@ -882,9 +1020,11 @@ class ParaViewManager:
                 GetActiveView, SetActiveSource, Clip, Show, GetActiveSource
             )
             
-            base_source = self.original_source or GetActiveSource()
+            base_source = GetActiveSource() or self.original_source
             if not base_source:
                 return False, "Error: No active source. Load data first.", None, None
+            
+            self.toggle_visibility(False)
             
             # If origin is unspecified, use the center of the dataset
             if origin_x is not None and origin_y is not None and origin_z is not None:
@@ -950,10 +1090,12 @@ class ParaViewManager:
                 GetActiveView, SetActiveSource, Slice, Show, GetActiveSource
             )
 
-            base_source = self.original_source or GetActiveSource()
+            base_source = GetActiveSource() or self.original_source
             if not base_source:
                 return False, "Error: No active source. Load data first.", None, None
-
+            
+            self.toggle_visibility(False)
+            
             # If origin is unspecified, use the center of the dataset
             if origin_x is not None and origin_y is not None and origin_z is not None:
                 origin = [origin_x, origin_y, origin_z]
@@ -1505,7 +1647,7 @@ class ParaViewManager:
                                         If None, the function automatically selects
                                         the first array with more than one component.
             base_source (optional): The data source (volume) on which to perform stream tracing.
-                                If None, uses self.original_source or GetActiveSource().
+                                If None, uses GetActiveSource() or self.original_source.
             point_center (list, optional): Center coordinates [x, y, z] for the seed points.
                                         If None, the center of the volume's bounds is used.
             integration_direction (str): "FORWARD", "BACKWARD", or "BOTH" for integration.
@@ -1526,7 +1668,7 @@ class ParaViewManager:
 
             # Determine the base source: use provided, or self.original_source, or the active source.
             if base_source is None:
-                base_source = self.original_source or GetActiveSource()
+                base_source = GetActiveSource() or self.original_source
             if not base_source:
                 return False, "Error: No active source. Load data first.", None, ""
 
@@ -1623,7 +1765,7 @@ class ParaViewManager:
     # Wrapper added by Claude Code to expose stream tracer via create_streamline command
     def create_streamline(self, seed_point_number: int, vector_field: str = None,
                          integration_direction: str = "BOTH", max_steps: int = 1000,
-                         initial_step: float = 0.1, maximum_step: float = 50.0):
+                         initial_step: float = 0.1, maximum_step: float = 50.0, tube_radius: float = .1):
         """
         Wrapper that forwards to create_stream_tracer.
         Note: max_steps is ignored because the underlying implementation uses number_of_streamlines.
@@ -1635,7 +1777,8 @@ class ParaViewManager:
             integration_direction=integration_direction,
             initial_step_length=initial_step,
             maximum_stream_length=maximum_step,
-            number_of_streamlines=seed_point_number)
+            number_of_streamlines=seed_point_number,
+            tube_radius=tube_radius)
 
     def get_screenshot(self):
         """
@@ -2034,9 +2177,12 @@ class ParaViewManager:
         """
         try:
             from paraview.simple import GetActiveSource, WarpByVector, Show, GetActiveView
+            
             source = GetActiveSource()
             if not source:
                 return False, "Error: No active source. Load data first.", None
+            
+            self.toggle_visibility(False)
 
             # If vector_field is not specified, try to auto-detect a vector field
             if vector_field is None:
@@ -2284,6 +2430,8 @@ class ParaViewManager:
             source = GetActiveSource()
             if not source:
                 return False, "Error: No active source. Load data first.", None, ""
+                
+            self.toggle_visibility(False)
             
             # Create transform filter
             transform_filter = Transform(Input=source)

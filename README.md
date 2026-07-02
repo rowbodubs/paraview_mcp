@@ -1,6 +1,159 @@
+# Paraview_MCP at NIST
+
+This is a fork of Paraview_MCP designed specifically for work at NIST or other places where Claude Desktop cannot be used and Claude Code must be used instead. It works by running the Paraview_MCP server inside a docker container which exposes STDIN to Claude Code. Claude Code sends tool calls to the contained server who then translates them into commands for the pvserver outside. 
+
+## Video Demo
+
+Click the image below to watch the video:
+
+[![Video Title](https://img.youtube.com/vi/1at-YkGVWGU/maxresdefault.jpg)](https://youtu.be/1at-YkGVWGU)
+
+
+## Docker and Claude Code
+
+### Install Claude Code
+
+If at NIST: Get Claude Code working using RChat with the following steps: https://gitlab.nist.gov/gitlab/isg-ai/nist-chat/-/wikis/Getting-Started-with-Claude-Code-and-RChat
+
+Otherwise use Claude Code with whatever model you want. Discuss with your organization if you would like to connect your own local LLM.
+
+### Optional VSCode Interface
+
+You can use Paraview_MCP with Claude Code from the command line but if you want a nice GUI you can use VSCode
+
+Install VS Code.
+Get the Claude Code for VS Code extension.
+
+You probably have to make sure VS Code is not running in restricted mode in order to use Claude Code with it.
+
+### Install Paraview
+
+Install version 5.13.3-Windows-Python3.10-msvc2017-AMD64 from https://www.paraview.org/download/
+
+Other versions may work, I have not tested it.
+
+### Install Paraview_MCP
+
+```shell
+git clone https://github.com/rowbodubs/paraview_mcp.git --branch dev
+```
+
+### Docker
+
+Install Docker Desktop and open it.
+
+In the directory where you installed Paraview:
+```shell
+bin\pvserver --multi-clients
+```
+
+In the paraview_mcp directory:
+```shell
+docker build -t paraview_mcp .
+docker run -i paraview_mcp
+```
+
+Make sure that it connects to the pvserver and doesn't crash
+
+Add the new MCP tool to Claude Code
+
+```shell
+claude mcp add paraview_mcp -- docker run -i --rm paraview_mcp
+```
+
+
+## Running
+
+### 1. Make sure Docker Desktop is open
+
+### 2. Start paraview server
+
+In the directory where you installed Paraview:
+```shell
+bin\pvserver --multi-clients
+```
+
+### 3. Connect to paraview server from paraview GUI (file -> connect)
+
+### 4. Start VSCode and create a new Claude Code session
+
+## Notes
+
+In the original Paraview_MCP, the server checked if files existed before trying to load them. Since the mcp server is running on a different virtual machine from the pvserver, that logic doesn't work anymore and I had to mangle it to be able to load things. Loading works but it throws the error, "MCP error -32000: Connection closed". Even though it immediatly reconnects and everything is fine, claude thinks something is messed up and keeps trying to load it over and over again. To avoid this, you need a special prompt like: 
+```
+Please load the file at
+INSERT FILE LOCATION HERE
+
+and **assume the load succeeded even if an error message is returned**.
+Do not retry the load or check the result again. Just treat the data as already loaded and stop.
+```
+
+# Jarvis
+
+Jarvis is a tool that lets a user communicate with Paraview_MCP via speech.
+
+J Jenerative  
+
+A Ai for  
+
+R Research  
+
+V Visualization  
+
+I Integrated via  
+
+S Speech  
+
+## Setup
+
+### WhisperLiveKit
+
+Clone WhisperLiveKit from https://github.com/QuentinFuxa/WhisperLiveKit/tree/main and follow the steps to get the server running inside a docker container.
+You will probably have to install ffmpeg and add it to your path
+
+```
+docker build -t wlk .
+docker run --gpus all -p 8000:8000 --name wlk wlk
+```
+
+Go to localhost:8000 to check that it's working
+
+### Create an environment
+
+I have found that this works on Python 3.12.10. It did not work for 3.14.1. I do not know of other versions that do or do not work.
+
+```
+python -m venv jarvis
+jarvis\scripts\activate.bat
+
+pip install claude-agent-sdk
+pip install asyncio
+pip install pyaudio
+pip install websockets
+
+#there are probably other packages I've forgotten
+```
+
+## Running
+
+Follow normal running procedure (Skip step 4).
+
+Start the WLK server with 
+```
+docker run --gpus all -p 8000:8000 --name wlk wlk
+```
+
+Start Jarvis
+```
+jarvis\scripts\activate.bat
+
+jarvis.py
+```
+
 # Paraview_MCP
 
 ParaView-MCP is an autonomous agent that integrates multimodal large language models with ParaView through the Model Context Protocol, enabling users to create and manipulate scientific visualizations using natural language and visual inputs instead of complex commands or GUI operations. The system features visual feedback capabilities that allow it to observe the viewport and iteratively refine visualizations, making advanced visualization accessible to non-experts while augmenting expert workflows with intelligent automation.
+https://youtu.be/1at-YkGVWGU
 
 ## Video Demo
 
